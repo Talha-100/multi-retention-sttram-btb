@@ -1,3 +1,4 @@
+# Object files
 prefetcher/l1i_prefetcher.cc
 prefetcher/l1d_prefetcher.cc
 prefetcher/l2c_prefetcher.cc
@@ -7,5 +8,18 @@ replacement/llc_replacement.cc
 
 inc/champsim.h.bak
 
+# Directories
 bin/
 obj/
+dpc3_traces/
+launch/scripts/
+results_50M/
+
+# Files
+collectStats/all_res
+
+# Dotfiles
+.idea/
+.vscode/
+.DS_Store
+*.swp

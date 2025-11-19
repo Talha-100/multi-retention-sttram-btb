@@ -4,7 +4,10 @@ declare -a bench
 declare -a prefetch
 declare -a btb
 
-PATH_TO_CHAMPSIM=
+# PATH_TO_CHAMPSIM="/path/to/champsim"  # <-- Set this to your ChampSim root if not using the automatic detection below
+# Determine ChampSim root as "two levels up from this script"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH_TO_CHAMPSIM="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 bench[0]=client_001
 bench[1]=client_002
