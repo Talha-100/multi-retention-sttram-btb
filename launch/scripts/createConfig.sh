@@ -8,6 +8,7 @@ declare -a btb
 # Determine ChampSim root as "two levels up from this script"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATH_TO_CHAMPSIM="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+echo ${PATH_TO_CHAMPSIM}
 
 bench[0]=client_001
 bench[1]=client_002
