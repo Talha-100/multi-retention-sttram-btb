@@ -8,18 +8,21 @@
 
 #include "ooo_cpu.h"
 
-#define BASIC_BTB_SETS 512
+#define BTB_CAPACITY_SCALE 4
+#define BTB_WRITE_LATENCY 4
+
+#define BASIC_BTB_SETS (512 * BTB_CAPACITY_SCALE)
 #define BASIC_BTB_WAYS 6
-#define BASIC_BTB_INDIRECT_SIZE 4096
+#define BASIC_BTB_INDIRECT_SIZE (4096 * BTB_CAPACITY_SCALE)
 #define BASIC_BTB_RAS_SIZE 64
 #define BASIC_BTB_CALL_INSTR_SIZE_TRACKERS 1024
 
-#define BASIC_BTB1_SETS 128
+#define BASIC_BTB1_SETS (128 * BTB_CAPACITY_SCALE)
 #define BASIC_BTB1_WAYS 1
 
-#define NUM_PAGEBTB_SETS 32
+#define NUM_PAGEBTB_SETS (32 * BTB_CAPACITY_SCALE)
 #define NUM_PAGEBTB_WAYS 16
-#define NUM_REGIONBTB_ENTRIES 4
+#define NUM_REGIONBTB_ENTRIES (4 * BTB_CAPACITY_SCALE)
 
 struct BASIC_BTB_ENTRY {
   uint64_t ip_tag;
@@ -37,6 +40,7 @@ struct BASIC_BTB_ENTRY {
 BASIC_BTB_ENTRY basic_btb[NUM_CPUS][BASIC_BTB_SETS][BASIC_BTB_WAYS];
 BASIC_BTB_ENTRY basic_btb1[NUM_CPUS][BASIC_BTB1_SETS][BASIC_BTB1_WAYS];
 uint64_t basic_btb_lru_counter[NUM_CPUS];
+static std::map<uint64_t, uint64_t> btb_write_ready[NUM_CPUS];
 
 uint64_t pageBTB[NUM_PAGEBTB_SETS][NUM_PAGEBTB_WAYS] = {0};
 std::vector <uint64_t> pageBTB_lru [NUM_PAGEBTB_SETS];
@@ -253,6 +257,7 @@ void O3_CPU::initialize_btb() {
   }
 
   basic_btb_lru_counter[cpu] = 0;
+  btb_write_ready[cpu].clear();
 
   for (int i = 0; i < NUM_PAGEBTB_SETS; i++) {
 	  pageBTB_lru[i].resize(NUM_PAGEBTB_WAYS);
@@ -281,6 +286,18 @@ void O3_CPU::initialize_btb() {
 
 BTB_outcome O3_CPU::btb_prediction(uint64_t ip, uint8_t branch_type) {
   auto btb_entry = basic_btb_find_entry(cpu, ip);
+  uint64_t write_ready_cycle = 0;
+  auto ready_it = btb_write_ready[cpu].find(ip);
+  if (ready_it != btb_write_ready[cpu].end()) {
+	  if (ready_it->second <= current_core_cycle[cpu]) {
+		  btb_write_ready[cpu].erase(ready_it);
+	  } else {
+		  write_ready_cycle = ready_it->second;
+	  }
+  }
+  if (btb_entry && write_ready_cycle) {
+	  btb_entry = NULL;
+  }
 
   if (btb_entry == NULL) {
     // no prediction for this IP
@@ -351,6 +368,7 @@ BTB_outcome O3_CPU::btb_prediction(uint64_t ip, uint8_t branch_type) {
 
 void O3_CPU::update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken,
                         uint8_t branch_type) {
+  bool wrote_entry = false;
   // updates for indirect branches
   /*if ((branch_type == BRANCH_INDIRECT) ||
       (branch_type == BRANCH_INDIRECT_CALL)) {
@@ -412,10 +430,12 @@ void O3_CPU::update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken,
       repl_entry->always_taken = 1;
       repl_entry->branch_type = branch_type;
       basic_btb_update_lru(cpu, repl_entry);
+      wrote_entry = true;
     }
   } else {
     // update an existing entry
 	  if (branch_target != 0) {
+		wrote_entry = true;
 		btb_entry->target = branch_target;
 
 		btb_entry->target_offset = branch_target & 0xFFF;
@@ -426,7 +446,7 @@ void O3_CPU::update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken,
 			btb_entry->pageBTB_set_index = pageNumber & (NUM_PAGEBTB_SETS - 1);
 			btb_entry->pageBTB_way_index = get_pageBTBIndex(pageNumber, PageBTB_writes);
 			btb_entry->regionBTB_index = get_regionBTBIndex(regionNumber, RegionBTB_writes);
-			btb_entry->same_page_target = 0;
+		  btb_entry->same_page_target = 0;
 		} else {
 			btb_entry->same_page_target = 1;
 		}
@@ -435,6 +455,10 @@ void O3_CPU::update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken,
 		  btb_entry->always_taken = 0;
 		}
 	  }
+  }
+  
+  if (wrote_entry) {
+	  btb_write_ready[cpu][ip] = current_core_cycle[cpu] + BTB_WRITE_LATENCY;
   }
   
 }

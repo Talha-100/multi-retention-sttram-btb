@@ -8,9 +8,12 @@
 
 #include "ooo_cpu.h"
 
-#define BASIC_BTB_SETS 4096
+#define BTB_CAPACITY_SCALE 4
+#define BTB_WRITE_LATENCY 4
+
+#define BASIC_BTB_SETS (4096 * BTB_CAPACITY_SCALE)
 #define BASIC_BTB_WAYS 4
-#define BASIC_BTB_INDIRECT_SIZE 4096
+#define BASIC_BTB_INDIRECT_SIZE (4096 * BTB_CAPACITY_SCALE)
 #define BASIC_BTB_RAS_SIZE 64
 #define BASIC_BTB_CALL_INSTR_SIZE_TRACKERS 1024
 
@@ -158,6 +161,7 @@ BTB BTB_Ret(1024, 8);*/
 
 #define NUM_BTB_PARTITIONS 2
 BTB btb_partition[NUM_BTB_PARTITIONS];
+static std::map<uint64_t, uint64_t> btb_write_ready[NUM_CPUS];
 
 uint64_t basic_btb_lru_counter[NUM_CPUS];
 
@@ -271,9 +275,10 @@ void O3_CPU::initialize_btb() {
   }
 
   basic_btb_lru_counter[cpu] = 0;
+  btb_write_ready[cpu].clear();
 
-  btb_partition[0].init_btb(256, 7);
-  btb_partition[1].init_btb(64, 1);
+  btb_partition[0].init_btb(256 * BTB_CAPACITY_SCALE, 7);
+  btb_partition[1].init_btb(64 * BTB_CAPACITY_SCALE, 1);
   //btb_partition[2].init_btb(256, 1);
   //btb_partition[3].init_btb(256, 1);
   //btb_partition[4].init_btb(256, 1);
@@ -285,12 +290,24 @@ void O3_CPU::initialize_btb() {
 
 BTB_outcome O3_CPU::btb_prediction(uint64_t ip, uint8_t branch_type) {
 	BTBEntry *btb_entry;
+  uint64_t write_ready_cycle = 0;
+  auto ready_it = btb_write_ready[cpu].find(ip);
+  if (ready_it != btb_write_ready[cpu].end()) {
+	  if (ready_it->second <= current_core_cycle[cpu]) {
+		  btb_write_ready[cpu].erase(ready_it);
+	  } else {
+		  write_ready_cycle = ready_it->second;
+	  }
+  }
 
   for (int i = 0; i < NUM_BTB_PARTITIONS; i++) {
 	  btb_entry = btb_partition[i].get_BTBentry(ip);
 	  if (btb_entry) {
 		  break;
 	  }
+  }
+  if (btb_entry && write_ready_cycle) {
+	  btb_entry = NULL;
   }
 
   if (btb_entry == NULL) {
@@ -343,6 +360,7 @@ BTB_outcome O3_CPU::btb_prediction(uint64_t ip, uint8_t branch_type) {
 
 void O3_CPU::update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken,
                         uint8_t branch_type) {
+  bool wrote_entry = false;
   // updates for indirect branches
   /*if ((branch_type == BRANCH_INDIRECT) ||
       (branch_type == BRANCH_INDIRECT_CALL)) {
@@ -398,15 +416,23 @@ void O3_CPU::update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken,
 	  int partition = get_lru_partition(smallest_offset_partition_id, ip);
 	  assert(partition < NUM_BTB_PARTITIONS);
 
-	  btb_partition[partition].update_BTB(ip, branch_type, branch_target, taken, basic_btb_lru_counter[cpu]);
+	  if ((branch_target != 0) && taken) {
+		  wrote_entry = true;
+		  btb_partition[partition].update_BTB(ip, branch_type, branch_target, taken, basic_btb_lru_counter[cpu]);
+	  }
 	  basic_btb_lru_counter[cpu]++;
 
 
   } else {
 	    // update an existing entry
 	  assert(partitionID != -1);
+	  wrote_entry = true;
 	  btb_partition[partitionID].update_BTB(ip, branch_type, branch_target, taken, basic_btb_lru_counter[cpu]);
 	  basic_btb_lru_counter[cpu]++;
+  }
+
+  if (wrote_entry) {
+	  btb_write_ready[cpu][ip] = current_core_cycle[cpu] + BTB_WRITE_LATENCY;
   }
   
 }
