@@ -15,9 +15,6 @@ dpc3_traces/
 launch/scripts/
 results_50M/
 
-# Files
-collectStats/all_res
-
 # Dotfiles
 .idea/
 .vscode/
