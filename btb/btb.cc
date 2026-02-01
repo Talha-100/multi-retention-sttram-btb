@@ -412,5 +412,5 @@ void O3_CPU::update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken,
 }
 
 void O3_CPU::dump_stt_write_stats() {
-    // Dummy implementation for basic BTB
+    // Dummy implementation for convBTB
 }

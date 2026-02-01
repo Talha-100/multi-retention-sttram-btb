@@ -20,6 +20,8 @@ Use the following commands to compile the code:
 
 ./build_champsim.sh hashed_perceptron BTBX no next_line spp_dev no lru 1
 
+./build_champsim.sh hashed_perceptron sttramBTB no next_line spp_dev no lru 1
+
 
 (Set “IFETCH_BUFFER” to “128” in line 63 of /<Path_to_code>/inc/ooo_cpu.h)
 
@@ -28,6 +30,8 @@ Use the following commands to compile the code:
 ./build_champsim.sh hashed_perceptron pdede fdip next_line spp_dev no lru 1
 
 ./build_champsim.sh hashed_perceptron BTBX fdip next_line spp_dev no lru 1
+
+./build_champsim.sh hashed_perceptron sttramBTB fdip next_line spp_dev no lru 1
 
 
 # Download IPC-1 trace
