@@ -174,6 +174,8 @@ void print_branch_stats()
 	cout << "XXX BTB_Ret_Misses " << ooo_cpu[i].BTB_Ret_Misses << endl;
 
 	cout << "XXX Num_unique_branches " << ooo_cpu[i].unique_branchPC.size() << endl;
+    
+    ooo_cpu[i].dump_stt_write_stats();
 
     }
 }

@@ -58,6 +58,7 @@ class O3_CPU {
              next_print_instruction, num_retired;
     uint32_t inflight_reg_executions, inflight_mem_executions, num_searched;
     uint32_t next_ITLB_fetch;
+    uint32_t btb_write_latency;
 
     // reorder buffer, load/store queue, register file
     CORE_BUFFER IFETCH_BUFFER{"IFETCH_BUFFER", FETCH_WIDTH*2};
@@ -141,6 +142,7 @@ class O3_CPU {
         num_searched = 0;
 
         next_ITLB_fetch = 0;
+        btb_write_latency = 0;
 
         // branch
         branch_mispredict_stall_fetch = 0;
@@ -254,7 +256,8 @@ class O3_CPU {
 
     BTB_outcome btb_prediction(uint64_t ip, uint8_t branch_type);
     void initialize_btb(),
-      update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken, uint8_t branch_type);
+      update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken, uint8_t branch_type),
+      dump_stt_write_stats();
 
   // code prefetching
   void l1i_prefetcher_initialize();

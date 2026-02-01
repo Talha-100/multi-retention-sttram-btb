@@ -1,9 +1,10 @@
-
 /*
  * This file implements a basic Branch Target Buffer (BTB) structure.
  * It uses a set-associative BTB to predict the targets of non-return branches,
  * and it uses a small Return Address Stack (RAS) to predict the target of
  * returns.
+ * 
+ * STT-RAM Version
  */
 
 #include "ooo_cpu.h"
@@ -19,6 +20,7 @@ struct BTBEntry {
   uint64_t target_ip;
   uint8_t branch_type;
   uint64_t lru;
+  uint64_t write_count;
 };
 
 struct BTB {
@@ -108,6 +110,7 @@ struct BTB {
                 entry.branch_type = b_type;
                 entry.target_ip = target;
                 entry.lru = lru_counter;
+                entry.write_count = 1;
 
                 if (theBTB[idx].size() >= assoc) {
                         theBTB[idx].erase(theBTB[idx].begin());
@@ -121,6 +124,7 @@ struct BTB {
 					entry.target_ip = target;
 			}
 			entry.lru = lru_counter;
+            entry.write_count++;
 
 			//Update LRU
 			theBTB[idx].erase(theBTB[idx].begin() + way);
@@ -145,6 +149,14 @@ struct BTB {
         return lru_value;
     }
 
+    void dump_stats(int partition_id) {
+        for (uint32_t set = 0; set < numSets; set++) {
+             for (uint32_t way = 0; way < theBTB[set].size(); way++) {
+                 std::cout << "XXX STT_WRITE_COUNT " << partition_id << " " << set << " " << way << " " << theBTB[set][way].write_count << std::endl;
+             }
+        }
+    }
+
 };
 
 /*BTB BTB_4D(1024, 8);                                   //Storage: (tag:16-bit, branch-type: 2-bit, target-offset: 10-bit) 28*1024*8 = 28KB
@@ -156,7 +168,7 @@ BTB BTB_25D(256, 8);
 BTB BTB_46D(128, 8);
 BTB BTB_Ret(1024, 8);*/
 
-#define NUM_BTB_PARTITIONS 2
+#define NUM_BTB_PARTITIONS 9
 BTB btb_partition[NUM_BTB_PARTITIONS];
 
 uint64_t basic_btb_lru_counter[NUM_CPUS];
@@ -220,7 +232,6 @@ uint64_t basic_btb_get_call_size(uint8_t cpu, uint64_t ip) {
 }
 
 int convert_offsetBits_to_partitionID(int num_bits) {
-	return 0;
 	  if (num_bits == 0) {
 		  return 0;
 	  } else if (num_bits <= 4) {
@@ -257,10 +268,12 @@ int get_lru_partition(int start_partitionID, uint64_t ip) {
 }
 
 void O3_CPU::initialize_btb() {
-  std::cout << "Basic BTB sets: " << BASIC_BTB_SETS
+  std::cout << "STT-RAM BTB (4x Density) sets: " << BASIC_BTB_SETS * 4
             << " ways: " << BASIC_BTB_WAYS
             << " indirect buffer size: " << BASIC_BTB_INDIRECT_SIZE
             << " RAS size: " << BASIC_BTB_RAS_SIZE << std::endl;
+
+  btb_write_latency = 8; // Set write latency for STT-RAM
 
   for (uint32_t i = 0; i < BASIC_BTB_RAS_SIZE; i++) {
     basic_btb_ras[cpu][i] = 0;
@@ -272,15 +285,16 @@ void O3_CPU::initialize_btb() {
 
   basic_btb_lru_counter[cpu] = 0;
 
-  btb_partition[0].init_btb(256, 7);
-  btb_partition[1].init_btb(64, 1);
-  //btb_partition[2].init_btb(256, 1);
-  //btb_partition[3].init_btb(256, 1);
-  //btb_partition[4].init_btb(256, 1);
-  //btb_partition[5].init_btb(256, 1);
-  //btb_partition[6].init_btb(256, 1);
-  //btb_partition[7].init_btb(256, 1);
-  //btb_partition[8].init_btb(64, 1);
+  // 4x density for all sets
+  btb_partition[0].init_btb(2048, 1);
+  btb_partition[1].init_btb(2048, 1);
+  btb_partition[2].init_btb(2048, 1);
+  btb_partition[3].init_btb(2048, 1);
+  btb_partition[4].init_btb(2048, 1);
+  btb_partition[5].init_btb(2048, 1);
+  btb_partition[6].init_btb(2048, 1);
+  btb_partition[7].init_btb(2048, 1);
+  btb_partition[8].init_btb(256, 1);
 }
 
 BTB_outcome O3_CPU::btb_prediction(uint64_t ip, uint8_t branch_type) {
@@ -296,7 +310,7 @@ BTB_outcome O3_CPU::btb_prediction(uint64_t ip, uint8_t branch_type) {
   if (btb_entry == NULL) {
     // no prediction for this IP
       if (branch_type == BRANCH_DIRECT_CALL || branch_type == BRANCH_INDIRECT_CALL) {
-	  push_basic_btb_ras(cpu, ip);
+          push_basic_btb_ras(cpu, ip);
       }
       BTB_outcome outcome = {0, BRANCH_CONDITIONAL, 2/*To indicate that it was a BTB miss*/};
       	  return outcome;
@@ -350,7 +364,7 @@ void O3_CPU::update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken,
   }
   if (branch_type == BRANCH_CONDITIONAL) {
     basic_btb_conditional_history[cpu] <<= 1;
-    if (taken) {
+    if (taken == true) {
       basic_btb_conditional_history[cpu] |= 1;
     }
   }*/
@@ -364,7 +378,12 @@ void O3_CPU::update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken,
     if (estimated_call_instr_size <= 10) {
       basic_btb_call_instr_sizes[cpu][basic_btb_call_size_tracker_hash(call_ip)] = estimated_call_instr_size;
     }
-  } 
+  }
+
+  if (taken == false)
+	  return;
+
+  // STT-RAM Write Latency Penalty moved to src/ooo_cpu.cc
 
   BTBEntry *btb_entry;
   int partitionID = -1;
@@ -412,5 +431,7 @@ void O3_CPU::update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken,
 }
 
 void O3_CPU::dump_stt_write_stats() {
-    // Dummy implementation for basic BTB
+    for (int i = 0; i < NUM_BTB_PARTITIONS; i++) {
+        btb_partition[i].dump_stats(i);
+    }
 }

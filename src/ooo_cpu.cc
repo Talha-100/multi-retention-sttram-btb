@@ -593,6 +593,12 @@ void O3_CPU::read_from_trace()
                                    IFETCH_BUFFER.entry[ifetch_buffer_index].branch_target,
                                    IFETCH_BUFFER.entry[ifetch_buffer_index].branch_taken,
                                    IFETCH_BUFFER.entry[ifetch_buffer_index].branch_type);
+                        
+                        if (IFETCH_BUFFER.entry[ifetch_buffer_index].branch_taken && btb_write_latency > 0) {
+                            fetch_stall = 1;
+                            fetch_resume_cycle = current_core_cycle[cpu] + btb_write_latency;
+                        }
+
                         last_branch_result(IFETCH_BUFFER.entry[ifetch_buffer_index].ip, IFETCH_BUFFER.entry[ifetch_buffer_index].branch_taken);
                     }
 
