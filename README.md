@@ -63,3 +63,7 @@ Go to directory /<Path_to_code>/collectStats/. Run the script getResults.sh, and
 Download the “all_res” file. Open the provided excel file "BTBX_artifact_results.xlsx". Click on “Data” in MS-Excel top menu bar. Click on “Refresh All” in “Queries and Connections” ribbon, go to the folder where you stored “all_res” and double click on “all_res”. Now “Offset Distribution”, “MPKI”, and “Performance” sheets in the excel file should have plots for Figure 4, Figure 9, and Figure 10 respectively. 
 
 # BTBX-HPCA23
+
+# Analysing STT-RAM Writes
+
+For instructions on how to analyse the write counts for the STT-RAM BTB using the provided `analyze_stt_writes.py` script, please refer to [STTRAM_ANALYSIS.md](STTRAM_ANALYSIS.md).

@@ -15,10 +15,12 @@ dpc3_traces/
 launch/scripts/
 results_50M/
 
-
 # Dotfiles
 .idea/
 .vscode/
 .DS_Store
+
+# Misc
+*.out
 *.swp
 gemini.md
