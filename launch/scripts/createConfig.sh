@@ -60,15 +60,16 @@ prefetch[1]=fdip
 btb[0]=convBTB
 btb[1]=pdede
 btb[2]=BTBX
+btb[3]=sttramBTB
 
 
 for ((j=0;j<2;j=j+1)); do
     for ((i=0;i<43;i=i+1)); do
-	for ((k=0;k<3;k=k+1)); do
-	    script_name="${bench[i]}_${prefetch[j]}_${btb[k]}.sh"
-	    echo "#!/bin/bash" > $script_name
-	    echo "cd ${PATH_TO_CHAMPSIM}" >> $script_name
-	    echo "./run_champsim.sh hashed_perceptron-${btb[k]}-${prefetch[j]}-next_line-spp_dev-no-lru-1core 50 50 ${bench[i]}.champsimtrace.xz" >> $script_name
-	done
+        for ((k=0;k<4;k=k+1)); do
+            script_name="${bench[i]}_${prefetch[j]}_${btb[k]}.sh"
+            echo "#!/bin/bash" > $script_name
+            echo "cd ${PATH_TO_CHAMPSIM}" >> $script_name
+            echo "./run_champsim.sh hashed_perceptron-${btb[k]}-${prefetch[j]}-next_line-spp_dev-no-lru-1core 50 50 ${bench[i]}.champsimtrace.xz" >> $script_name
+        done
     done
-done 
+done
