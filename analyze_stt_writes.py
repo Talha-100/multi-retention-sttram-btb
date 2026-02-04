@@ -13,7 +13,8 @@ def analyze_stt_writes(input_file, excel_file):
             for line in f:
                 parts = line.split()
                 if len(parts) >= 7 and parts[2] == 'STT_WRITE_COUNT':
-                    # client_001 fdip_sttramBTB STT_WRITE_COUNT 0 10 0 55
+                    # Format: Benchmark Config STT_WRITE_COUNT Partition Set Way Count
+                    # Example: client_001 fdip_sttramBTB STT_WRITE_COUNT 0 10 0 55
                     benchmark = parts[0]
                     config = parts[1]
                     partition = int(parts[3])
@@ -39,40 +40,90 @@ def analyze_stt_writes(input_file, excel_file):
 
     df = pd.DataFrame(data)
     
+    # Mapping for Partition ID to Offset Bits Description
+    partition_map = {
+        0: "Return",
+        1: "<= 4 bits",
+        2: "<= 5 bits",
+        3: "<= 7 bits",
+        4: "<= 9 bits",
+        5: "<= 11 bits",
+        6: "<= 19 bits",
+        7: "<= 25 bits",
+        8: "> 25 bits"
+    }
+
+    # Helper function to generate stats table
+    def generate_table(df_subset):
+        if df_subset.empty:
+            return pd.DataFrame()
+        
+        # Group by Partition (the "ways for different offset bits")
+        stats = df_subset.groupby('Partition')['Count'].sum().reset_index()
+        stats.columns = ['Partition ID', 'Total Writes']
+        
+        # Add Description
+        stats['Offset Bits'] = stats['Partition ID'].map(partition_map)
+        
+        # Calculate Percentage
+        total_sum = stats['Total Writes'].sum()
+        if total_sum > 0:
+            stats['% of Total'] = (stats['Total Writes'] / total_sum) * 100
+        else:
+            stats['% of Total'] = 0.0
+            
+        # Reorder columns
+        stats = stats[['Partition ID', 'Offset Bits', 'Total Writes', '% of Total']]
+        return stats
+
     # Identify configs
-    configs = df['Config'].unique()
+    # We expect config names containing "no" and "fdip"
+    unique_configs = df['Config'].unique()
     
-    # Prepare tables
+    no_configs = [c for c in unique_configs if 'no' in c]
+    fdip_configs = [c for c in unique_configs if 'fdip' in c]
+    
     tables = {}
     
-    # 1. Totals and Averages per Config
-    for cfg in configs:
-        cfg_df = df[df['Config'] == cfg]
-        way_stats = cfg_df.groupby('Way')['Count'].agg(['sum', 'mean', 'max']).reset_index()
-        way_stats.columns = ['Way', 'Total Writes', 'Average Writes', 'Max Writes']
-        tables[f"{cfg} Stats"] = way_stats
-
-    # 2. Combined Averages
-    combined_stats = df.groupby('Way')['Count'].mean().reset_index()
-    combined_stats.columns = ['Way', 'Combined Average Writes']
-    tables["Combined Averages"] = combined_stats
+    # 1. Table for 'no' prefetcher (no_sttramBTB)
+    # Aggregate all benchmarks for this config type
+    if no_configs:
+        df_no = df[df['Config'].isin(no_configs)]
+        tables['no_sttramBTB Stats'] = generate_table(df_no)
     
-    # 3. Summary (Most/Least used ways) - Fraction
-    total_writes_all = df['Count'].sum()
-    way_totals = df.groupby('Way')['Count'].sum().reset_index()
-    way_totals['Fraction'] = way_totals['Count'] / total_writes_all
-    way_totals = way_totals.sort_values(by='Count', ascending=False)
-    tables["Way Usage Summary"] = way_totals
+    # 2. Table for 'fdip' prefetcher (fdip_sttramBTB)
+    if fdip_configs:
+        df_fdip = df[df['Config'].isin(fdip_configs)]
+        tables['fdip_sttramBTB Stats'] = generate_table(df_fdip)
+
+    # 3. Average of the two (Average of the Counts, recalculate %)
+    if 'no_sttramBTB Stats' in tables and 'fdip_sttramBTB Stats' in tables:
+        t1 = tables['no_sttramBTB Stats'].set_index('Partition ID')
+        t2 = tables['fdip_sttramBTB Stats'].set_index('Partition ID')
+        
+        # Average the Total Writes
+        # Align on Partition ID
+        avg_df = t1[['Total Writes']].add(t2[['Total Writes']], fill_value=0) / 2
+        avg_df = avg_df.reset_index()
+        avg_df.columns = ['Partition ID', 'Average Total Writes']
+        
+        # Add Description
+        avg_df['Offset Bits'] = avg_df['Partition ID'].map(partition_map)
+        
+        # Recalculate % based on Average Total
+        total_avg_sum = avg_df['Average Total Writes'].sum()
+        if total_avg_sum > 0:
+            avg_df['% of Total'] = (avg_df['Average Total Writes'] / total_avg_sum) * 100
+        else:
+            avg_df['% of Total'] = 0.0
+            
+        avg_df = avg_df[['Partition ID', 'Offset Bits', 'Average Total Writes', '% of Total']]
+        tables['Combined Average Stats'] = avg_df
 
     # Write to Excel
     print(f"Writing to {excel_file}...")
     try:
-        # Create a new workbook or overwrite to ensure we don't corrupt existing complex files
-        # We prefer writing to a separate file for safety.
         with pd.ExcelWriter(excel_file, engine='openpyxl') as writer:
-             # Just create a dummy frame to init the sheet, then use low-level access for formatting
-             # Actually simpler: just write the tables.
-             
              start_row = 0
              for title, table_df in tables.items():
                  # Write title
@@ -89,7 +140,7 @@ def analyze_stt_writes(input_file, excel_file):
 
 if __name__ == "__main__":
     input_filename = "collectStats/all_res"
-    output_filename = "sttram_analysis_results.xlsx" # SAFE DEFAULT
+    output_filename = "sttram_analysis_results.xlsx" 
     
     if len(sys.argv) > 1:
         input_filename = sys.argv[1]
