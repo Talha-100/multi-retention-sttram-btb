@@ -58,12 +58,15 @@ This command will simulate server_001 workload with BTBX and no instruction pref
 
 Go to directory /<Path_to_code>/collectStats/. Run the script getResults.sh, and it will collect results from all workloads and save them in a file “all_res”.
 
-# Plotting results
+# Plotting and Analyzing Results
 
-Download the “all_res” file. Open the provided excel file "BTBX_artifact_results.xlsx". Click on “Data” in MS-Excel top menu bar. Click on “Refresh All” in “Queries and Connections” ribbon, go to the folder where you stored “all_res” and double click on “all_res”. Now “Offset Distribution”, “MPKI”, and “Performance” sheets in the excel file should have plots for Figure 4, Figure 9, and Figure 10 respectively. 
+Instead of manually updating the artifact Excel sheet, use the provided Python script to generate a fresh, formatted report.
 
-# Analysing STT-RAM Writes
+Run the following command to generate `Analysis_Report.xlsx`:
+```bash
+python3 generate_report.py
+```
 
-For instructions on how to analyse the write counts for the STT-RAM BTB using the provided `analyze_stt_writes.py` script, please refer to [STTRAM_ANALYSIS.md](STTRAM_ANALYSIS.md).
+For more details on the report generation, see [REPORT_GENERATION.md](REPORT_GENERATION.md).
 
-# BTBX-HPCA23
+For detailed analysis of STT-RAM write counts, see [STTRAM_ANALYSIS.md](STTRAM_ANALYSIS.md).
