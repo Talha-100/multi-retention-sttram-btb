@@ -61,11 +61,12 @@ btb[0]=convBTB
 btb[1]=pdede
 btb[2]=BTBX
 btb[3]=sttramBTB
+btb[4]=fixed-retentions-btb
 
 
 for ((j=0;j<2;j=j+1)); do
     for ((i=0;i<43;i=i+1)); do
-        for ((k=0;k<4;k=k+1)); do
+        for ((k=0;k<5;k=k+1)); do
             script_name="${bench[i]}_${prefetch[j]}_${btb[k]}.sh"
             echo "#!/bin/bash" > $script_name
             echo "cd ${PATH_TO_CHAMPSIM}" >> $script_name

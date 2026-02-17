@@ -80,29 +80,40 @@ def analyze_stt_writes(input_file, excel_file):
     # We expect config names containing "no" and "fdip"
     unique_configs = df['Config'].unique()
     
-    no_configs = [c for c in unique_configs if 'no' in c]
-    fdip_configs = [c for c in unique_configs if 'fdip' in c]
+    no_sttram_configs = [c for c in unique_configs if 'no' in c and 'sttramBTB' in c]
+    fdip_sttram_configs = [c for c in unique_configs if 'fdip' in c and 'sttramBTB' in c]
+    
+    no_fixed_configs = [c for c in unique_configs if 'no' in c and 'fixed-retentions-btb' in c]
+    fdip_fixed_configs = [c for c in unique_configs if 'fdip' in c and 'fixed-retentions-btb' in c]
     
     tables = {}
     
     # 1. Table for 'no' prefetcher (no_sttramBTB)
-    # Aggregate all benchmarks for this config type
-    if no_configs:
-        df_no = df[df['Config'].isin(no_configs)]
-        tables['no_sttramBTB Stats'] = generate_table(df_no)
+    if no_sttram_configs:
+        df_subset = df[df['Config'].isin(no_sttram_configs)]
+        tables['no_sttramBTB Stats'] = generate_table(df_subset)
     
     # 2. Table for 'fdip' prefetcher (fdip_sttramBTB)
-    if fdip_configs:
-        df_fdip = df[df['Config'].isin(fdip_configs)]
-        tables['fdip_sttramBTB Stats'] = generate_table(df_fdip)
+    if fdip_sttram_configs:
+        df_subset = df[df['Config'].isin(fdip_sttram_configs)]
+        tables['fdip_sttramBTB Stats'] = generate_table(df_subset)
+        
+    # 3. Table for 'no' prefetcher (no_fixed-retentions-btb)
+    if no_fixed_configs:
+        df_subset = df[df['Config'].isin(no_fixed_configs)]
+        tables['no_fixed-retentions-btb Stats'] = generate_table(df_subset)
+        
+    # 4. Table for 'fdip' prefetcher (fdip_fixed-retentions-btb)
+    if fdip_fixed_configs:
+        df_subset = df[df['Config'].isin(fdip_fixed_configs)]
+        tables['fdip_fixed-retentions-btb Stats'] = generate_table(df_subset)
 
-    # 3. Average of the two (Average of the Counts, recalculate %)
+    # Combined Average for sttramBTB
     if 'no_sttramBTB Stats' in tables and 'fdip_sttramBTB Stats' in tables:
         t1 = tables['no_sttramBTB Stats'].set_index('Partition ID')
         t2 = tables['fdip_sttramBTB Stats'].set_index('Partition ID')
         
         # Average the Total Writes
-        # Align on Partition ID
         avg_df = t1[['Total Writes']].add(t2[['Total Writes']], fill_value=0) / 2
         avg_df = avg_df.reset_index()
         avg_df.columns = ['Partition ID', 'Average Total Writes']
@@ -118,7 +129,30 @@ def analyze_stt_writes(input_file, excel_file):
             avg_df['% of Total'] = 0.0
             
         avg_df = avg_df[['Partition ID', 'Offset Bits', 'Average Total Writes', '% of Total']]
-        tables['Combined Average Stats'] = avg_df
+        tables['sttramBTB Combined Average Stats'] = avg_df
+
+    # Combined Average for fixed-retentions-btb
+    if 'no_fixed-retentions-btb Stats' in tables and 'fdip_fixed-retentions-btb Stats' in tables:
+        t1 = tables['no_fixed-retentions-btb Stats'].set_index('Partition ID')
+        t2 = tables['fdip_fixed-retentions-btb Stats'].set_index('Partition ID')
+        
+        # Average the Total Writes
+        avg_df = t1[['Total Writes']].add(t2[['Total Writes']], fill_value=0) / 2
+        avg_df = avg_df.reset_index()
+        avg_df.columns = ['Partition ID', 'Average Total Writes']
+        
+        # Add Description
+        avg_df['Offset Bits'] = avg_df['Partition ID'].map(partition_map)
+        
+        # Recalculate % based on Average Total
+        total_avg_sum = avg_df['Average Total Writes'].sum()
+        if total_avg_sum > 0:
+            avg_df['% of Total'] = (avg_df['Average Total Writes'] / total_avg_sum) * 100
+        else:
+            avg_df['% of Total'] = 0.0
+            
+        avg_df = avg_df[['Partition ID', 'Offset Bits', 'Average Total Writes', '% of Total']]
+        tables['fixed-retentions-btb Combined Average Stats'] = avg_df
 
     # Write to Excel
     print(f"Writing to {excel_file}...")

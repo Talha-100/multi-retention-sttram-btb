@@ -104,7 +104,7 @@ def generate_report(input_file, output_file):
          df_wide['BTB_Hit_MPKI'] = np.nan
 
     # --- Sort Logic ---
-    custom_btb_order = ['convBTB', 'pdede', 'BTBX', 'sttramBTB']
+    custom_btb_order = ['convBTB', 'pdede', 'BTBX', 'sttramBTB', 'fixed-retentions-btb']
 
     def get_btb_sort_key(btb_name):
         if btb_name in custom_btb_order:
