@@ -20,11 +20,12 @@ struct BTBEntry {
   uint64_t target_ip;
   uint8_t branch_type;
   uint64_t lru;
-  uint64_t write_count;
+  uint32_t way_id;
 };
 
 struct BTB {
         std::vector <std::vector<BTBEntry>> theBTB;
+        std::vector <std::vector<uint64_t>> write_counts;
         uint32_t numSets;
         uint32_t assoc;
         uint64_t indexMask;
@@ -38,6 +39,7 @@ struct BTB {
           //aBTBSize must be a power of 2
           assert( ((Sets - 1) & (Sets)) == 0);
           theBTB.resize(Sets);
+          write_counts.resize(Sets, std::vector<uint64_t>(Assoc, 0));
           indexMask = Sets - 1;
           numIndexBits = (uint32_t) log2((double)Sets);
         }
@@ -48,6 +50,7 @@ struct BTB {
         //aBTBSize must be a power of 2
         assert( ((Sets - 1) & (Sets)) == 0);
         theBTB.resize(Sets);
+        write_counts.resize(Sets, std::vector<uint64_t>(Assoc, 0));
         indexMask = Sets - 1;
         numIndexBits = (uint32_t) log2((double)Sets);
     }
@@ -110,12 +113,16 @@ struct BTB {
                 entry.branch_type = b_type;
                 entry.target_ip = target;
                 entry.lru = lru_counter;
-                entry.write_count = 1;
 
                 if (theBTB[idx].size() >= assoc) {
+                        entry.way_id = theBTB[idx].front().way_id;
                         theBTB[idx].erase(theBTB[idx].begin());
+                } else {
+                        entry.way_id = theBTB[idx].size();
                 }
+
                 theBTB[idx].push_back(entry);
+                write_counts[idx][entry.way_id]++;
         	}
         } else {
 			BTBEntry entry = theBTB[idx][way];
@@ -124,11 +131,11 @@ struct BTB {
 					entry.target_ip = target;
 			}
 			entry.lru = lru_counter;
-            entry.write_count++;
 
 			//Update LRU
 			theBTB[idx].erase(theBTB[idx].begin() + way);
 			theBTB[idx].push_back(entry);
+            write_counts[idx][entry.way_id]++;
         }
     }
 
@@ -151,8 +158,10 @@ struct BTB {
 
     void dump_stats(int partition_id) {
         for (uint32_t set = 0; set < numSets; set++) {
-             for (uint32_t way = 0; way < theBTB[set].size(); way++) {
-                 std::cout << "XXX STT_WRITE_COUNT " << partition_id << " " << set << " " << way << " " << theBTB[set][way].write_count << std::endl;
+             for (uint32_t way = 0; way < assoc; way++) {
+                 if (write_counts[set][way] > 0) {
+                     std::cout << "XXX STT_WRITE_COUNT " << partition_id << " " << set << " " << way << " " << write_counts[set][way] << std::endl;
+                 }
              }
         }
     }
