@@ -7,6 +7,62 @@ from openpyxl import load_workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.drawing.image import Image
 
+def plot_spatial_distribution(df_plot, img_path):
+    if df_plot is None or df_plot.empty: return
+    df_plot = df_plot.copy()
+    if 'Set' in df_plot.columns:
+        df_plot['Set'] = df_plot['Set'].astype(int)
+        w_cols = [c for c in df_plot.columns if str(c).startswith('W')]
+        if w_cols:
+            df_plot = df_plot[df_plot[w_cols].sum(axis=1) > 0]
+            if len(df_plot) > 10:
+                indices = np.linspace(0, len(df_plot) - 1, 10, dtype=int)
+                df_plot = df_plot.iloc[indices]
+            df_plot = df_plot.set_index('Set')
+            
+            fig, ax = plt.subplots(figsize=(10, 5))
+            colors = ['#003f7f', '#ff4c00', '#ffcc00', '#4c9900', 'white', '#7fccff', 'white', '#99cc00', '#ffcc99']
+            hatches = ['', '', '', '', '---', '', '/', '', '+++']
+            n_cols = len(w_cols)
+            colors = (colors * ((n_cols // len(colors)) + 1))[:n_cols]
+            hatches = (hatches * ((n_cols // len(hatches)) + 1))[:n_cols]
+
+            x = np.arange(len(df_plot.index))
+            width = 0.8 / n_cols
+            
+            for i, col in enumerate(w_cols):
+                offset = (i - n_cols/2) * width + width/2
+                edgecolor = 'black' if hatches[i] != '' or colors[i] == 'white' else 'none'
+                ax.bar(x + offset, df_plot[col], width, label=col, color=colors[i], edgecolor=edgecolor, hatch=hatches[i], linewidth=1)
+
+            ax.set_ylabel('Write Count', fontweight='bold', fontsize=12)
+            ax.set_xlabel('Set ID', fontweight='bold', fontsize=12)
+            ax.set_xticks(x)
+            ax.set_xticklabels(df_plot.index, fontweight='bold', fontsize=11)
+            
+            import matplotlib.patches as mpatches
+            legend_handles = []
+            for i, col in enumerate(w_cols):
+                edgecolor = 'black' if hatches[i] != '' or colors[i] == 'white' else 'none'
+                patch = mpatches.Patch(facecolor=colors[i], edgecolor=edgecolor, hatch=hatches[i], label=col, linewidth=1)
+                legend_handles.append(patch)
+
+            ax.legend(handles=legend_handles, loc='upper center', bbox_to_anchor=(0.5, 1.15), 
+                      ncol=min(n_cols, 9), frameon=False, prop={'weight':'bold', 'size':11}, handletextpad=0.5, columnspacing=1.0)
+
+            ax.yaxis.grid(True, linestyle='-', which='major', color='lightgrey', alpha=0.5)
+            ax.set_axisbelow(True)
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['left'].set_linewidth(1.5)
+            ax.spines['bottom'].set_linewidth(1.5)
+            ax.tick_params(axis='y', labelsize=11, width=1.5, length=5)
+            ax.tick_params(axis='x', length=5, width=1.5)
+            
+            plt.tight_layout()
+            plt.savefig(img_path, dpi=300)
+            plt.close()
+
 def analyze_stt_writes(input_file, excel_file):
     print(f"Analyzing STT-RAM writes from {input_file}...")
     
@@ -144,71 +200,34 @@ def analyze_stt_writes(input_file, excel_file):
 
     if plot_df is not None and not plot_df.empty:
          print("Generating spatial plot...")
-         df_plot = plot_df.copy()
-         if 'Set' in df_plot.columns:
-             df_plot['Set'] = df_plot['Set'].astype(int)
-             w_cols = [c for c in df_plot.columns if str(c).startswith('W')]
-             if w_cols:
-                 df_plot = df_plot[df_plot[w_cols].sum(axis=1) > 0]
-                 if len(df_plot) > 10:
-                      indices = np.linspace(0, len(df_plot) - 1, 10, dtype=int)
-                      df_plot = df_plot.iloc[indices]
-                 df_plot = df_plot.set_index('Set')
-                 
-                 fig, ax = plt.subplots(figsize=(10, 5))
-                 colors = ['#003f7f', '#ff4c00', '#ffcc00', '#4c9900', 'white', '#7fccff', 'white', '#99cc00', '#ffcc99']
-                 hatches = ['', '', '', '', '---', '', '/', '', '+++']
-                 n_cols = len(w_cols)
-                 colors = (colors * ((n_cols // len(colors)) + 1))[:n_cols]
-                 hatches = (hatches * ((n_cols // len(hatches)) + 1))[:n_cols]
+         img_path = 'spatial_distribution.png'
+         plot_spatial_distribution(plot_df, img_path)
+         
+         try:
+             wb = load_workbook(excel_file)
+             if 'Spatial Distribution' in wb.sheetnames:
+                 ws = wb['Spatial Distribution']
+                 img = Image(img_path)
+                 # Place the image to the right of the tables (e.g. column M)
+                 ws.add_image(img, 'M2')
+                 wb.save(excel_file)
+                 print("Plot successfully embedded into the Excel file.")
+         except Exception as e:
+             print(f"Error embedding plot: {e}")
 
-                 x = np.arange(len(df_plot.index))
-                 width = 0.8 / n_cols
-                 
-                 for i, col in enumerate(w_cols):
-                     offset = (i - n_cols/2) * width + width/2
-                     edgecolor = 'black' if hatches[i] != '' or colors[i] == 'white' else 'none'
-                     ax.bar(x + offset, df_plot[col], width, label=col, color=colors[i], edgecolor=edgecolor, hatch=hatches[i], linewidth=1)
-
-                 ax.set_ylabel('Write Count', fontweight='bold', fontsize=12)
-                 ax.set_xlabel('Set ID', fontweight='bold', fontsize=12)
-                 ax.set_xticks(x)
-                 ax.set_xticklabels(df_plot.index, fontweight='bold', fontsize=11)
-                 
-                 import matplotlib.patches as mpatches
-                 legend_handles = []
-                 for i, col in enumerate(w_cols):
-                     edgecolor = 'black' if hatches[i] != '' or colors[i] == 'white' else 'none'
-                     patch = mpatches.Patch(facecolor=colors[i], edgecolor=edgecolor, hatch=hatches[i], label=col, linewidth=1)
-                     legend_handles.append(patch)
-
-                 ax.legend(handles=legend_handles, loc='upper center', bbox_to_anchor=(0.5, 1.15), 
-                           ncol=min(n_cols, 9), frameon=False, prop={'weight':'bold', 'size':11}, handletextpad=0.5, columnspacing=1.0)
-
-                 ax.yaxis.grid(True, linestyle='-', which='major', color='lightgrey', alpha=0.5)
-                 ax.set_axisbelow(True)
-                 ax.spines['top'].set_visible(False)
-                 ax.spines['right'].set_visible(False)
-                 ax.spines['left'].set_linewidth(1.5)
-                 ax.spines['bottom'].set_linewidth(1.5)
-                 ax.tick_params(axis='y', labelsize=11, width=1.5, length=5)
-                 ax.tick_params(axis='x', length=5, width=1.5)
-                 
-                 plt.tight_layout()
-                 img_path = 'spatial_distribution.png'
-                 plt.savefig(img_path, dpi=300)
-                 plt.close()
-                 
-                 try:
-                     wb = load_workbook(excel_file)
-                     ws = wb['Spatial Distribution']
-                     img = Image(img_path)
-                     # Place the image to the right of the tables (e.g. column M)
-                     ws.add_image(img, 'M2')
-                     wb.save(excel_file)
-                     print("Plot successfully embedded into the Excel file.")
-                 except Exception as e:
-                     print(f"Error embedding plot: {e}")
+    print("Generating individual benchmark spatial plots...")
+    output_dir = "spatial_plots"
+    os.makedirs(output_dir, exist_ok=True)
+    fixed_configs = no_fixed_configs + fdip_fixed_configs
+    if fixed_configs:
+        df_fixed = df[df['Config'].isin(fixed_configs)]
+        for bench, group in df_fixed.groupby('Benchmark'):
+            spatial_table = group.groupby(['Set', 'Partition'])['Count'].mean().unstack(fill_value=0)
+            spatial_table.columns = [f"W{c}" for c in spatial_table.columns]
+            spatial_table = spatial_table.reset_index()
+            if not spatial_table.empty:
+                b_img_path = os.path.join(output_dir, f"{bench}_spatial_distribution.png")
+                plot_spatial_distribution(spatial_table, b_img_path)
 
 if __name__ == "__main__":
     input_filename = "collectStats/all_res"

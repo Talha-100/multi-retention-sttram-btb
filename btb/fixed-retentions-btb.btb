@@ -448,11 +448,11 @@ void O3_CPU::update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken,
       if (target_partition == 0 || target_partition == 1 || target_partition == 3) {
           // Zone 1
           btb_write_latency = 4;
-      } else if (target_partition == 2 || target_partition == 4 || target_partition == 6) {
+      } else if (target_partition == 2 || target_partition == 4 || target_partition == 6 || target_partition == 8) {
           // Zone 2
           btb_write_latency = 7;
       } else {
-          // Zone 3 (5, 7, and 8)
+          // Zone 3 (5, 7)
           btb_write_latency = 11;
       }
   }
