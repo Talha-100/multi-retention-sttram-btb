@@ -195,8 +195,6 @@ def analyze_stt_writes(input_file, excel_file):
     plot_df = None
     if 'fixed-retentions-btb Combined Average Spatial' in spatial_tables:
          plot_df = spatial_tables['fixed-retentions-btb Combined Average Spatial']
-    elif spatial_tables:
-         plot_df = list(spatial_tables.values())[0]
 
     if plot_df is not None and not plot_df.empty:
          print("Generating spatial plot...")
