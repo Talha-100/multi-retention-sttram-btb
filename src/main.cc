@@ -25,6 +25,8 @@ queue <uint64_t > page_queue;
 map <uint64_t, uint64_t> page_table, inverse_table, recent_page, unique_cl[NUM_CPUS];
 uint64_t previous_ppage, num_adjacent_page, num_cl[NUM_CPUS], allocated_pages, num_page[NUM_CPUS], minor_fault[NUM_CPUS], major_fault[NUM_CPUS];
 
+uint64_t mot_stats[4][5] = {0};
+
 void record_roi_stats(uint32_t cpu, CACHE *cache)
 {
     for (uint32_t i=0; i<NUM_TYPES; i++) {
@@ -1064,6 +1066,12 @@ int main(int argc, char** argv)
     print_dram_stats();
     print_branch_stats();
 #endif
+
+    for (int zone = 0; zone < 4; zone++) {
+        for (int bucket = 0; bucket < 5; bucket++) {
+            cout << "XXX MOT_STATS " << ooo_cpu[0].trace_string << " " << zone << " " << bucket << " " << mot_stats[zone][bucket] << endl;
+        }
+    }
 
     return 0;
 }

@@ -14,11 +14,15 @@
 #define BASIC_BTB_RAS_SIZE 64
 #define BASIC_BTB_CALL_INSTR_SIZE_TRACKERS 1024
 
+extern uint64_t mot_stats[4][5];
+
 struct BTBEntry {
   uint64_t tag;
   uint64_t target_ip;
   uint8_t branch_type;
   uint64_t lru;
+  uint64_t write_timestamp;
+  uint32_t hit_count;
 };
 
 struct BTB {
@@ -90,7 +94,7 @@ struct BTB {
         return entry;
     }
 
-    void update_BTB(uint64_t ip, uint8_t b_type, uint64_t target, uint8_t taken, uint64_t lru_counter){
+    void update_BTB(uint64_t ip, uint8_t b_type, uint64_t target, uint8_t taken, uint64_t lru_counter, uint64_t current_cycle){
         int idx = index(ip);
         uint64_t tag = get_tag(ip);
         int way = -1;
@@ -108,9 +112,31 @@ struct BTB {
                 entry.branch_type = b_type;
                 entry.target_ip = target;
                 entry.lru = lru_counter;
+                entry.write_timestamp = current_cycle;
+                entry.hit_count = 0;
 
                 if (theBTB[idx].size() >= assoc) {
+                        BTBEntry evicted_entry = theBTB[idx].front();
                         theBTB[idx].erase(theBTB[idx].begin());
+
+                        uint64_t lifetime = current_cycle - evicted_entry.write_timestamp;
+                        int lifetime_zone = 0;
+                        if (lifetime <= 4000000) {
+                            lifetime_zone = 0;
+                        } else if (lifetime <= 40000000) {
+                            lifetime_zone = 1;
+                        } else if (lifetime <= 400000000) {
+                            lifetime_zone = 2;
+                        } else {
+                            lifetime_zone = 3;
+                        }
+                        
+                        int hit_bucket = evicted_entry.hit_count;
+                        if (hit_bucket == 0) hit_bucket = 1;
+                        hit_bucket--; 
+                        if (hit_bucket > 4) hit_bucket = 4;
+                        
+                        mot_stats[lifetime_zone][hit_bucket]++;
                 }
                 theBTB[idx].push_back(entry);
         	}
@@ -121,6 +147,8 @@ struct BTB {
 					entry.target_ip = target;
 			}
 			entry.lru = lru_counter;
+			entry.write_timestamp = current_cycle;
+			entry.hit_count = 0;
 
 			//Update LRU
 			theBTB[idx].erase(theBTB[idx].begin() + way);
@@ -289,6 +317,7 @@ BTB_outcome O3_CPU::btb_prediction(uint64_t ip, uint8_t branch_type) {
   for (int i = 0; i < NUM_BTB_PARTITIONS; i++) {
 	  btb_entry = btb_partition[i].get_BTBentry(ip);
 	  if (btb_entry) {
+          btb_entry->hit_count++;
 		  break;
 	  }
   }
@@ -398,14 +427,14 @@ void O3_CPU::update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken,
 	  int partition = get_lru_partition(smallest_offset_partition_id, ip);
 	  assert(partition < NUM_BTB_PARTITIONS);
 
-	  btb_partition[partition].update_BTB(ip, branch_type, branch_target, taken, basic_btb_lru_counter[cpu]);
+	  btb_partition[partition].update_BTB(ip, branch_type, branch_target, taken, basic_btb_lru_counter[cpu], current_core_cycle[cpu]);
 	  basic_btb_lru_counter[cpu]++;
 
 
   } else {
 	    // update an existing entry
 	  assert(partitionID != -1);
-	  btb_partition[partitionID].update_BTB(ip, branch_type, branch_target, taken, basic_btb_lru_counter[cpu]);
+	  btb_partition[partitionID].update_BTB(ip, branch_type, branch_target, taken, basic_btb_lru_counter[cpu], current_core_cycle[cpu]);
 	  basic_btb_lru_counter[cpu]++;
   }
   
