@@ -22,8 +22,8 @@ def parse_all_res(filepath):
                 config = parts[1]
                 key = parts[2]
                 
-                # We only care about STT-RAM configs for the new output
-                if 'sttram' not in config:
+                # We only care about STT-RAM Volatility configs for the new output
+                if '-ref-' not in config and '-wb-' not in config:
                     continue
                     
                 pair = (bench, config)
@@ -73,9 +73,11 @@ def parse_all_res(filepath):
         if '-ref-' in config:
             policy = 'Refresh'
             rt = config.split('-ref-')[1]
+            prefetch = config.split('_conv-sttram-')[0]
         elif '-wb-' in config:
             policy = 'WriteBack'
             rt = config.split('-wb-')[1]
+            prefetch = config.split('_conv-sttram-')[0]
             
         reads = s.get('reads', 0)
         writes = s.get('writes', 0)
@@ -108,9 +110,14 @@ def parse_all_res(filepath):
         
         ref_wb_count = refreshes if policy == 'Refresh' else evictions
         
-        data.append([bench, policy, rt, ipc, mpki, pred_accuracy, total_energy_mj, ref_wb_count])
+        data.append([bench, prefetch, policy, rt, ipc, mpki, pred_accuracy, total_energy_mj, ref_wb_count])
         
-    df = pd.DataFrame(data, columns=['Benchmarks', 'Policy', 'RT', 'IPC', 'MPKI', 'Pred_Accuracy (%)', 'Energy (mJ)', 'REF/WB Counts'])
+    df = pd.DataFrame(data, columns=['Benchmarks', 'Prefetcher', 'Policy', 'RT', 'IPC', 'MPKI', 'Pred_Accuracy (%)', 'Energy (mJ)', 'REF/WB Counts'])
+    
+    # Average the metrics across the different prefetcher configurations (no and fdip)
+    df = df.drop(columns=['Prefetcher'])
+    df = df.groupby(['Benchmarks', 'Policy', 'RT'], as_index=False).mean()
+    
     return df
 
 def generate_csv(df, output_path):
@@ -119,7 +126,11 @@ def generate_csv(df, output_path):
         return
         
     try:
-        df = df.sort_values(by=['Benchmarks', 'Policy', 'RT'])
+        # Retention time custom sorting
+        rt_order = {"1ms": 1, "10ms": 2, "100ms": 3, "1s": 4}
+        df['RT_Sort'] = df['RT'].map(rt_order)
+        df = df.sort_values(by=['Benchmarks', 'Policy', 'RT_Sort']).drop(columns=['RT_Sort'])
+        
         df.to_csv(output_path, index=False)
         print(f"Successfully generated {output_path}")
         
