@@ -59,3 +59,14 @@ This document provides a description of the different Branch Target Buffer (BTB)
 *   **Citations:**
     *   Architecture based on BTB-X: *T. Asheim, B. Grot, and R. Kumar, "A Storage-Effective BTB Organization for Servers," 2023 IEEE HPCA.*
     *   STT-RAM capacity scaling, retention zones, and modeling characteristics based on: *X. Dong et al., "NVSim: A Circuit-Level Performance, Energy, and Area Model for Emerging Nonvolatile Memory," IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems, 2012.*
+
+---
+
+## STT-RAM Volatility Wrappers (`volatile_wrappers/conv-sttram-*.btb`)
+
+*   **Memory Technology:** STT-RAM
+*   **Architecture Description:** These 8 configurations build upon the `convBTB` baseline, scaling it to 4x capacity to model STT-RAM density. They implement and evaluate two different volatility management policies across 4 retention times (1ms, 10ms, 100ms, and 1s) to study the trade-off between write latency and retention failures.
+*   **Policies:**
+    *   **Refresh (REF):** Entries are analytically refreshed. Refresh stalls are added to the execution time at the end of the simulation to calculate an Adjusted IPC.
+    *   **Write-Back/Evict (WB):** Expired entries are invalidated upon a read access, increasing the BTB miss rate.
+*   **Output:** Generates `XXX STT_VOLATILE_STATS` lines containing total refreshes, total evictions, and adjusted IPC.

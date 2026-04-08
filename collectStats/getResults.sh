@@ -82,11 +82,19 @@ btb[1]=pdede
 btb[2]=BTBX
 btb[3]=sttramBTB
 btb[4]=fixed-retentions-btb
+btb[5]=conv-sttram-ref-1ms
+btb[6]=conv-sttram-ref-10ms
+btb[7]=conv-sttram-ref-100ms
+btb[8]=conv-sttram-ref-1s
+btb[9]=conv-sttram-wb-1ms
+btb[10]=conv-sttram-wb-10ms
+btb[11]=conv-sttram-wb-100ms
+btb[12]=conv-sttram-wb-1s
 
 
 for ((j=0;j<$runs;j=j+1)); do
     for ((i=0;i<43;i=i+1)); do
-	for ((k=0;k<5;k=k+1)); do
+	for ((k=0;k<13;k=k+1)); do
             grep XXX ../results_50M/${bench[i]}.champsimtrace.xz-hashed_perceptron-${btb[k]}-${prefetch[j]}-next_line-spp_dev-no-lru-1core.txt > out_${bench[i]}_${prefetch[j]}_${btb[k]}
 	    sed "s/XXX/${bench[i]} ${runName[j]}_${btb[k]}/g" out_${bench[i]}_${prefetch[j]}_${btb[k]} > Sout_${bench[i]}_${prefetch[j]}_${btb[k]}
 	done

@@ -1,0 +1,4 @@
+#define VOLATILE_POLICY_REFRESH
+#define RETENTION_CYCLES 4000000
+#define WRITE_PENALTY 2
+#include "sttram_volatile_core.h"

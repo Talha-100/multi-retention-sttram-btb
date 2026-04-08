@@ -26,6 +26,9 @@ map <uint64_t, uint64_t> page_table, inverse_table, recent_page, unique_cl[NUM_C
 uint64_t previous_ppage, num_adjacent_page, num_cl[NUM_CPUS], allocated_pages, num_page[NUM_CPUS], minor_fault[NUM_CPUS], major_fault[NUM_CPUS];
 
 uint64_t mot_stats[4][5] = {0};
+uint64_t sttram_refreshes = 0;
+uint64_t sttram_evictions = 0;
+uint64_t sttram_write_penalty = 0;
 
 void record_roi_stats(uint32_t cpu, CACHE *cache)
 {
@@ -1066,6 +1069,11 @@ int main(int argc, char** argv)
     print_dram_stats();
     print_branch_stats();
 #endif
+
+    ooo_cpu[0].dump_stt_write_stats();
+    uint64_t adjusted_cycles = ooo_cpu[0].finish_sim_cycle + (sttram_refreshes * sttram_write_penalty);
+    double adjusted_ipc = (double)ooo_cpu[0].finish_sim_instr / adjusted_cycles;
+    cout << "XXX STT_VOLATILE_STATS " << sttram_refreshes << " " << sttram_evictions << " " << adjusted_ipc << endl;
 
     for (int zone = 0; zone < 4; zone++) {
         for (int bucket = 0; bucket < 5; bucket++) {

@@ -29,7 +29,8 @@ if [ ! -f ./branch/${BRANCH}.bpred ]; then
     exit 1
 fi
 
-if [ ! -f ./btb/${BTB}.btb ]; then
+BTB_FILE=$(find btb -name "${BTB}.btb" | head -n 1)
+if [ -z "$BTB_FILE" ]; then
     echo "[ERROR] Cannot find BTB "
         echo "[ERROR] Possible BTBs from btb/*.btb "
     find btb -name "*.btb"
@@ -97,7 +98,7 @@ echo
 
 # Change prefetchers and replacement policy
 cp branch/${BRANCH}.bpred branch/branch_predictor.cc
-cp btb/${BTB}.btb btb/btb.cc
+cp ${BTB_FILE} btb/btb.cc
 cp prefetcher/${L1I_PREFETCHER}.l1i_pref prefetcher/l1i_prefetcher.cc
 cp prefetcher/${L1D_PREFETCHER}.l1d_pref prefetcher/l1d_prefetcher.cc
 cp prefetcher/${L2C_PREFETCHER}.l2c_pref prefetcher/l2c_prefetcher.cc
