@@ -62,19 +62,11 @@ btb[1]=pdede
 btb[2]=BTBX
 btb[3]=sttramBTB
 btb[4]=fixed-retentions-btb
-btb[5]=conv-sttram-ref-1ms
-btb[6]=conv-sttram-ref-10ms
-btb[7]=conv-sttram-ref-100ms
-btb[8]=conv-sttram-ref-1s
-btb[9]=conv-sttram-wb-1ms
-btb[10]=conv-sttram-wb-10ms
-btb[11]=conv-sttram-wb-100ms
-btb[12]=conv-sttram-wb-1s
-
+btb[5]=multi-retention-btb
 
 for ((j=0;j<2;j=j+1)); do
     for ((i=0;i<43;i=i+1)); do
-        for ((k=0;k<13;k=k+1)); do
+        for ((k=0;k<6;k=k+1)); do
             script_name="${bench[i]}_${prefetch[j]}_${btb[k]}.sh"
             echo "#!/bin/bash" > $script_name
             echo "cd ${PATH_TO_CHAMPSIM}" >> $script_name

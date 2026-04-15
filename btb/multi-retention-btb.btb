@@ -1,0 +1,414 @@
+/*
+ * This file implements a basic Branch Target Buffer (BTB) structure.
+ * It uses a set-associative BTB to predict the targets of non-return branches,
+ * and it uses a small Return Address Stack (RAS) to predict the target of
+ * returns.
+ * 
+ * Multi-Retention STT-RAM Version
+ */
+
+#include "ooo_cpu.h"
+
+#define BASIC_BTB_SETS 4096
+#define BASIC_BTB_WAYS 4
+#define BASIC_BTB_INDIRECT_SIZE 4096
+#define BASIC_BTB_RAS_SIZE 64
+#define BASIC_BTB_CALL_INSTR_SIZE_TRACKERS 1024
+
+struct BTBEntry {
+  uint64_t tag;
+  uint64_t target_ip;
+  uint8_t branch_type;
+  uint64_t lru;
+  uint32_t way_id;
+  uint8_t zone_id;
+};
+
+struct BTB {
+        std::vector <std::vector<BTBEntry>> theBTB;
+        std::vector <std::vector<uint64_t>> write_counts;
+        uint32_t numSets;
+        uint32_t assoc;
+        uint64_t indexMask;
+        uint32_t numIndexBits;
+
+    BTB () {}
+
+    BTB( int32_t Sets, int32_t Assoc )
+      : numSets(Sets)
+        , assoc(Assoc) {
+          assert( ((Sets - 1) & (Sets)) == 0);
+          theBTB.resize(Sets);
+          write_counts.resize(Sets, std::vector<uint64_t>(Assoc, 0));
+          indexMask = Sets - 1;
+          numIndexBits = (uint32_t) log2((double)Sets);
+        }
+
+    void init_btb (int32_t Sets, int32_t Assoc) {
+    	numSets = Sets;
+    	assoc = Assoc;
+        assert( ((Sets - 1) & (Sets)) == 0);
+        theBTB.resize(Sets);
+        write_counts.resize(Sets, std::vector<uint64_t>(Assoc, 0));
+        indexMask = Sets - 1;
+        numIndexBits = (uint32_t) log2((double)Sets);
+    }
+
+    int32_t index(uint64_t ip, uint8_t zone) {
+        uint64_t base_hash = (ip >> 2);
+        uint32_t z1_size = numSets / 2;
+        uint32_t z2_size = numSets / 4;
+        uint32_t z3_size = numSets / 4;
+
+        if (zone == 1) {
+            return base_hash % z1_size; 
+        } else if (zone == 2) {
+            return z1_size + (base_hash % z2_size);
+        } else if (zone == 3) {
+            return z1_size + z2_size + (base_hash % z3_size);
+        }
+        return base_hash % numSets;
+    }
+
+    uint64_t get_tag(uint64_t ip) {
+        uint64_t addr = ip;
+		addr = addr >> 2;
+        addr = addr >> numIndexBits;
+        uint64_t tag = addr & 0xFF; 
+        addr = addr >> 8;
+        int tagMSBs = 0;
+        for (int i = 0; i < 8; i++) {
+                tagMSBs = tagMSBs ^ (addr & 0xFF);
+                addr = addr >> 8;
+        }
+        tag = tag | (tagMSBs << 8);
+        return tag;
+    }
+
+    BTBEntry *get_BTBentry(uint64_t ip, uint8_t* out_zone){
+        uint64_t tag = get_tag(ip);
+        
+        for (uint8_t z = 1; z <= 3; z++) {
+            int idx = index(ip, z);
+            for (uint32_t i = 0; i < theBTB[idx].size(); i++) {
+                if (theBTB[idx][i].tag == tag) {
+                    if (out_zone) *out_zone = z;
+                    return &(theBTB[idx][i]);
+                }
+            }
+        }
+        return NULL;
+    }
+
+    void insert_entry(uint64_t ip, uint8_t b_type, uint64_t target, uint64_t lru_counter, uint8_t zone) {
+        int idx = index(ip, zone);
+        uint64_t tag = get_tag(ip);
+
+        BTBEntry entry;
+        entry.tag = tag;
+        entry.branch_type = b_type;
+        entry.target_ip = target;
+        entry.lru = lru_counter;
+        entry.zone_id = zone;
+
+        if (theBTB[idx].size() >= assoc) {
+            entry.way_id = theBTB[idx].front().way_id;
+            theBTB[idx].erase(theBTB[idx].begin());
+        } else {
+            entry.way_id = theBTB[idx].size();
+        }
+
+        theBTB[idx].push_back(entry);
+        write_counts[idx][entry.way_id]++;
+    }
+
+    void update_miss_BTB(uint64_t ip, uint8_t b_type, uint64_t target, uint8_t taken, uint64_t lru_counter) {
+        if (!taken) return;
+        insert_entry(ip, b_type, target, lru_counter, 1);
+    }
+
+    void update_hit_BTB(uint64_t ip, uint8_t b_type, uint64_t target, uint8_t taken, uint64_t lru_counter, uint8_t& out_new_zone) {
+        uint64_t tag = get_tag(ip);
+        int current_zone = 0;
+        int current_idx = -1;
+        int current_way = -1;
+
+        for (int z = 1; z <= 3; z++) {
+            int idx = index(ip, z);
+            for (uint32_t i = 0; i < theBTB[idx].size(); i++) {
+                if (theBTB[idx][i].tag == tag) {
+                    current_zone = z;
+                    current_idx = idx;
+                    current_way = i;
+                    break;
+                }
+            }
+            if (current_zone != 0) break;
+        }
+
+        if (current_zone == 0) return; 
+
+        int new_zone = current_zone;
+        if (taken) {
+            if (current_zone == 1) new_zone = 2;
+            else if (current_zone == 2) new_zone = 3;
+        }
+
+        out_new_zone = new_zone;
+
+        if (new_zone != current_zone) {
+            theBTB[current_idx].erase(theBTB[current_idx].begin() + current_way);
+            insert_entry(ip, b_type, target, lru_counter, new_zone);
+        } else {
+            BTBEntry entry = theBTB[current_idx][current_way];
+            entry.branch_type = b_type;
+            if (target != 0) entry.target_ip = target;
+            entry.lru = lru_counter;
+            theBTB[current_idx].erase(theBTB[current_idx].begin() + current_way);
+            theBTB[current_idx].push_back(entry);
+            write_counts[current_idx][entry.way_id]++;
+        }
+    }
+
+    uint64_t get_lru_value(uint64_t ip) {
+        int idx = index(ip, 1); 
+        uint64_t lru_value;
+        if (theBTB[idx].size() < assoc) { 
+        	lru_value = 0;
+        } else {
+        	lru_value = theBTB[idx][0].lru;
+        }
+        return lru_value;
+    }
+
+    void dump_stats(int partition_id) {
+        for (uint32_t set = 0; set < numSets; set++) {
+             for (uint32_t way = 0; way < assoc; way++) {
+                 if (write_counts[set][way] > 0) {
+                     std::cout << "XXX STT_WRITE_COUNT " << partition_id << " " << set << " " << way << " " << write_counts[set][way] << std::endl;
+                 }
+             }
+        }
+    }
+
+};
+
+#define NUM_BTB_PARTITIONS 9
+BTB btb_partition[NUM_BTB_PARTITIONS];
+
+uint64_t basic_btb_lru_counter[NUM_CPUS];
+
+uint64_t basic_btb_indirect[NUM_CPUS][BASIC_BTB_INDIRECT_SIZE];
+uint64_t basic_btb_conditional_history[NUM_CPUS];
+
+uint64_t basic_btb_ras[NUM_CPUS][BASIC_BTB_RAS_SIZE];
+int basic_btb_ras_index[NUM_CPUS];
+uint64_t basic_btb_call_instr_sizes[NUM_CPUS][BASIC_BTB_CALL_INSTR_SIZE_TRACKERS];
+
+uint64_t basic_btb_abs_addr_dist(uint64_t addr1, uint64_t addr2) {
+  if(addr1 > addr2) {
+    return addr1 - addr2;
+  }
+  return addr2 - addr1;
+}
+
+void push_basic_btb_ras(uint8_t cpu, uint64_t ip) {
+  basic_btb_ras_index[cpu]++;
+  if (basic_btb_ras_index[cpu] == BASIC_BTB_RAS_SIZE) {
+    basic_btb_ras_index[cpu] = 0;
+  }
+  basic_btb_ras[cpu][basic_btb_ras_index[cpu]] = ip;
+}
+
+uint64_t peek_basic_btb_ras(uint8_t cpu) {
+  return basic_btb_ras[cpu][basic_btb_ras_index[cpu]];
+}
+
+uint64_t pop_basic_btb_ras(uint8_t cpu) {
+  uint64_t target = basic_btb_ras[cpu][basic_btb_ras_index[cpu]];
+  basic_btb_ras[cpu][basic_btb_ras_index[cpu]] = 0;
+  basic_btb_ras_index[cpu]--;
+  if (basic_btb_ras_index[cpu] == -1) {
+    basic_btb_ras_index[cpu] += BASIC_BTB_RAS_SIZE;
+  }
+  return target;
+}
+
+uint64_t basic_btb_call_size_tracker_hash(uint64_t ip) {
+  return (ip & (BASIC_BTB_CALL_INSTR_SIZE_TRACKERS-1));
+}
+
+uint64_t basic_btb_get_call_size(uint8_t cpu, uint64_t ip) {
+  uint64_t size = basic_btb_call_instr_sizes[cpu][basic_btb_call_size_tracker_hash(ip)];
+  return size;
+}
+
+int convert_offsetBits_to_partitionID(int num_bits) {
+	  if (num_bits == 0) return 0;
+	  else if (num_bits <= 4) return 1;
+	  else if (num_bits <= 5) return 2;
+	  else if (num_bits <= 7) return 3;
+	  else if (num_bits <= 9) return 4;
+	  else if (num_bits <= 11) return 5;
+	  else if (num_bits <= 19) return 6;
+	  else if (num_bits <= 25) return 7;
+	  else return 8;
+	  assert(0);
+}
+
+int get_lru_partition(int start_partitionID, uint64_t ip) {
+	  int lru_partition = start_partitionID;
+	  uint64_t lru_value = btb_partition[start_partitionID].get_lru_value(ip);
+	  for (int i = start_partitionID + 1; i < NUM_BTB_PARTITIONS; i++) {
+		uint64_t partition_lru_value = btb_partition[i].get_lru_value(ip);
+	    if (partition_lru_value < lru_value) {
+	      lru_partition = i;
+	      lru_value = partition_lru_value;
+	    }
+	  }
+	  return lru_partition;
+}
+
+void O3_CPU::initialize_btb() {
+  std::cout << "STT-RAM Multi-Retention BTB sets: " << 2048
+            << " ways: 1"
+            << " indirect buffer size: " << BASIC_BTB_INDIRECT_SIZE
+            << " RAS size: " << BASIC_BTB_RAS_SIZE << std::endl;
+
+  btb_write_latency = 0; 
+
+  for (uint32_t i = 0; i < BASIC_BTB_RAS_SIZE; i++) {
+    basic_btb_ras[cpu][i] = 0;
+  }
+  basic_btb_ras_index[cpu] = 0;
+  for (uint32_t i=0; i<BASIC_BTB_CALL_INSTR_SIZE_TRACKERS; i++) {
+    basic_btb_call_instr_sizes[cpu][i] = 4;
+  }
+
+  basic_btb_lru_counter[cpu] = 0;
+
+  btb_partition[0].init_btb(2048, 1);
+  btb_partition[1].init_btb(2048, 1);
+  btb_partition[2].init_btb(2048, 1);
+  btb_partition[3].init_btb(2048, 1);
+  btb_partition[4].init_btb(2048, 1);
+  btb_partition[5].init_btb(2048, 1);
+  btb_partition[6].init_btb(2048, 1);
+  btb_partition[7].init_btb(2048, 1);
+  btb_partition[8].init_btb(256, 1);
+}
+
+BTB_outcome O3_CPU::btb_prediction(uint64_t ip, uint8_t branch_type) {
+	BTBEntry *btb_entry = NULL;
+    uint8_t hit_zone = 0;
+
+  for (int i = 0; i < NUM_BTB_PARTITIONS; i++) {
+	  btb_entry = btb_partition[i].get_BTBentry(ip, &hit_zone);
+	  if (btb_entry) {
+		  break;
+	  }
+  }
+
+  if (btb_entry != NULL) {
+      if (hit_zone == 1) multi_ret_zone1_hits++;
+      else if (hit_zone == 2) multi_ret_zone2_hits++;
+      else if (hit_zone == 3) multi_ret_zone3_hits++;
+  }
+
+  if (btb_entry == NULL) {
+      if (branch_type == BRANCH_DIRECT_CALL || branch_type == BRANCH_INDIRECT_CALL) {
+          push_basic_btb_ras(cpu, ip);
+      }
+      BTB_outcome outcome = {0, BRANCH_CONDITIONAL, 2};
+      return outcome;
+  }
+
+  branch_type = btb_entry->branch_type;
+
+  if ((branch_type == BRANCH_DIRECT_CALL) ||
+      (branch_type == BRANCH_INDIRECT_CALL)) {
+    push_basic_btb_ras(cpu, ip);
+  }
+
+  if (branch_type == BRANCH_RETURN) {
+    uint64_t target = peek_basic_btb_ras(cpu);
+    target += basic_btb_get_call_size(cpu, target);
+    BTB_outcome outcome = {target, BRANCH_RETURN, 0};
+    return outcome;
+  } else {
+    BTB_outcome outcome = {btb_entry->target_ip, branch_type, 0};
+    return outcome;
+  }
+
+  assert(0);
+}
+
+void O3_CPU::update_btb(uint64_t ip, uint64_t branch_target, uint8_t taken,
+                        uint8_t branch_type) {
+  if (branch_type == BRANCH_RETURN) {
+    uint64_t call_ip = pop_basic_btb_ras(cpu);
+    uint64_t estimated_call_instr_size = basic_btb_abs_addr_dist(call_ip, branch_target);
+    if (estimated_call_instr_size <= 10) {
+      basic_btb_call_instr_sizes[cpu][basic_btb_call_size_tracker_hash(call_ip)] = estimated_call_instr_size;
+    }
+  }
+
+  if (taken == false)
+	  return;
+
+  BTBEntry *btb_entry = NULL;
+  int partitionID = -1;
+  uint8_t current_zone = 0;
+  for (int i = 0; i < NUM_BTB_PARTITIONS; i++) {
+	  btb_entry = btb_partition[i].get_BTBentry(ip, &current_zone);
+	  if (btb_entry) {
+		  partitionID = i;
+		  break;
+	  }
+  }
+
+  if (btb_entry == NULL) {
+	  BTB_writes++;
+
+	  int num_bits;
+	  if (branch_type == BRANCH_RETURN) {
+		  num_bits = 0;
+	  } else {
+		  uint64_t diff_bits = (branch_target >> 2) ^ (ip >> 2);
+		  num_bits = 0;
+		  while (diff_bits != 0) {
+			  diff_bits = diff_bits >> 1;
+			  num_bits++;
+		  }
+	  }
+	  assert(num_bits >= 0 && num_bits < 66);
+
+	  int smallest_offset_partition_id = convert_offsetBits_to_partitionID(num_bits);
+	  int partition = get_lru_partition(smallest_offset_partition_id, ip);
+	  assert(partition < NUM_BTB_PARTITIONS);
+
+	  btb_partition[partition].update_miss_BTB(ip, branch_type, branch_target, taken, basic_btb_lru_counter[cpu]);
+	  basic_btb_lru_counter[cpu]++;
+      btb_write_latency = 2;
+
+  } else {
+	  assert(partitionID != -1);
+      uint8_t new_zone;
+	  btb_partition[partitionID].update_hit_BTB(ip, branch_type, branch_target, taken, basic_btb_lru_counter[cpu], new_zone);
+	  basic_btb_lru_counter[cpu]++;
+      
+      if (new_zone > current_zone) {
+          multi_ret_promotions++;
+      }
+      
+      if (new_zone == 1) btb_write_latency = 2; 
+      else if (new_zone == 2) btb_write_latency = 3;
+      else if (new_zone == 3) btb_write_latency = 4;
+  }
+}
+
+void O3_CPU::dump_stt_write_stats() {
+    for (int i = 0; i < NUM_BTB_PARTITIONS; i++) {
+        btb_partition[i].dump_stats(i);
+    }
+}

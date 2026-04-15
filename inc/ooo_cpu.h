@@ -60,6 +60,12 @@ class O3_CPU {
     uint32_t next_ITLB_fetch;
     uint32_t btb_write_latency;
 
+    // Multi-retention stats
+    uint64_t multi_ret_zone1_hits;
+    uint64_t multi_ret_zone2_hits;
+    uint64_t multi_ret_zone3_hits;
+    uint64_t multi_ret_promotions;
+
     // reorder buffer, load/store queue, register file
     //CORE_BUFFER IFETCH_BUFFER{"IFETCH_BUFFER", FETCH_WIDTH*2};
     CORE_BUFFER IFETCH_BUFFER{"IFETCH_BUFFER", 128};
@@ -143,6 +149,11 @@ class O3_CPU {
 
         next_ITLB_fetch = 0;
         btb_write_latency = 0;
+
+        multi_ret_zone1_hits = 0;
+        multi_ret_zone2_hits = 0;
+        multi_ret_zone3_hits = 0;
+        multi_ret_promotions = 0;
 
         // branch
         branch_mispredict_stall_fetch = 0;

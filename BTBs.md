@@ -62,11 +62,14 @@ This document provides a description of the different Branch Target Buffer (BTB)
 
 ---
 
-## STT-RAM Volatility Wrappers (`volatile_wrappers/conv-sttram-*.btb`)
+## `multi-retention-btb.btb`
 
-*   **Memory Technology:** STT-RAM
-*   **Architecture Description:** These 8 configurations build upon the `convBTB` baseline, scaling it to 4x capacity to model STT-RAM density. They implement and evaluate two different volatility management policies across 4 retention times (1ms, 10ms, 100ms, and 1s) to study the trade-off between write latency and retention failures.
-*   **Policies:**
-    *   **Refresh (REF):** Entries are analytically refreshed. Refresh stalls are added to the execution time at the end of the simulation to calculate an Adjusted IPC.
-    *   **Write-Back/Evict (WB):** Expired entries are invalidated upon a read access, increasing the BTB miss rate.
-*   **Output:** Generates `XXX STT_VOLATILE_STATS` lines containing total refreshes, total evictions, and adjusted IPC.
+*   **Memory Technology:** Multi-Retention STT-RAM
+*   **Architecture Description:** This design utilizes the BTB-X architecture with a dynamic promotion policy. The BTB is logically partitioned into three retention zones (1ms, 10ms, 100ms). Entries are promoted to higher retention tiers upon successful branch hits to optimize the trade-off between write latency and data volatility.
+*   **Changes/Details:**
+    *   Retains the 4x density advantage of STT-RAM.
+    *   **Zone 1:** 1ms retention, capacity 50% (Sets 0-1023). Write Latency: 2 Cycles.
+    *   **Zone 2:** 10ms retention, capacity 25% (Sets 1024-1535). Write Latency: 3 Cycles.
+    *   **Zone 3:** 100ms retention, capacity 25% (Sets 1536-2047). Write Latency: 4 Cycles.
+    *   **Dynamic Policy:** Insertion into Zone 1. Promotion to higher zones on branch hits. Eviction is LRU per zone.
+*   **Output:** Generates `XXX MULTI_RET_STATS` lines containing zone hits, promotions, and adjusted IPC.

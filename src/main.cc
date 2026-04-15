@@ -1073,6 +1073,15 @@ int main(int argc, char** argv)
     ooo_cpu[0].dump_stt_write_stats();
     uint64_t adjusted_cycles = ooo_cpu[0].finish_sim_cycle + (sttram_refreshes * sttram_write_penalty);
     double adjusted_ipc = (double)ooo_cpu[0].finish_sim_instr / adjusted_cycles;
+    
+    double multi_ret_adjusted_ipc = (double)ooo_cpu[0].finish_sim_instr / ooo_cpu[0].finish_sim_cycle;
+    cout << "XXX MULTI_RET_STATS " << ooo_cpu[0].trace_string << " " 
+         << ooo_cpu[0].multi_ret_zone1_hits << " " 
+         << ooo_cpu[0].multi_ret_zone2_hits << " " 
+         << ooo_cpu[0].multi_ret_zone3_hits << " " 
+         << ooo_cpu[0].multi_ret_promotions << " " 
+         << multi_ret_adjusted_ipc << endl;
+
     cout << "XXX STT_VOLATILE_STATS " << sttram_refreshes << " " << sttram_evictions << " " << adjusted_ipc << endl;
 
     for (int zone = 0; zone < 4; zone++) {

@@ -24,15 +24,7 @@ Use the following commands to compile the code:
 
 ./build_champsim.sh hashed_perceptron fixed-retentions-btb no next_line spp_dev no lru 1
 
-# STT-RAM Volatility Configurations
-./build_champsim.sh hashed_perceptron conv-sttram-ref-1ms no next_line spp_dev no lru 1
-./build_champsim.sh hashed_perceptron conv-sttram-ref-10ms no next_line spp_dev no lru 1
-./build_champsim.sh hashed_perceptron conv-sttram-ref-100ms no next_line spp_dev no lru 1
-./build_champsim.sh hashed_perceptron conv-sttram-ref-1s no next_line spp_dev no lru 1
-./build_champsim.sh hashed_perceptron conv-sttram-wb-1ms no next_line spp_dev no lru 1
-./build_champsim.sh hashed_perceptron conv-sttram-wb-10ms no next_line spp_dev no lru 1
-./build_champsim.sh hashed_perceptron conv-sttram-wb-100ms no next_line spp_dev no lru 1
-./build_champsim.sh hashed_perceptron conv-sttram-wb-1s no next_line spp_dev no lru 1
+./build_champsim.sh hashed_perceptron multi-retention-btb no next_line spp_dev no lru 1
 
 
 (Set “IFETCH_BUFFER” to “128” in line 63 of /<Path_to_code>/inc/ooo_cpu.h)
@@ -47,15 +39,7 @@ Use the following commands to compile the code:
 
 ./build_champsim.sh hashed_perceptron fixed-retentions-btb fdip next_line spp_dev no lru 1
 
-# STT-RAM Volatility Configurations (fdip)
-./build_champsim.sh hashed_perceptron conv-sttram-ref-1ms fdip next_line spp_dev no lru 1
-./build_champsim.sh hashed_perceptron conv-sttram-ref-10ms fdip next_line spp_dev no lru 1
-./build_champsim.sh hashed_perceptron conv-sttram-ref-100ms fdip next_line spp_dev no lru 1
-./build_champsim.sh hashed_perceptron conv-sttram-ref-1s fdip next_line spp_dev no lru 1
-./build_champsim.sh hashed_perceptron conv-sttram-wb-1ms fdip next_line spp_dev no lru 1
-./build_champsim.sh hashed_perceptron conv-sttram-wb-10ms fdip next_line spp_dev no lru 1
-./build_champsim.sh hashed_perceptron conv-sttram-wb-100ms fdip next_line spp_dev no lru 1
-./build_champsim.sh hashed_perceptron conv-sttram-wb-1s fdip next_line spp_dev no lru 1
+./build_champsim.sh hashed_perceptron multi-retention-btb fdip next_line spp_dev no lru 1
 
 
 # Download IPC-1 trace

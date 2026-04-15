@@ -15,6 +15,17 @@ def load_and_parse_data(filepath):
                     bench = parts[0]
                     config = parts[1]
                     metric = parts[2]
+                    
+                    if metric == 'MULTI_RET_STATS':
+                        # parts format: [bench, config, 'MULTI_RET_STATS', Benchmark, Z1_Hits, Z2_Hits, Z3_Hits, Prom, Adj_IPC]
+                        if len(parts) >= 9:
+                            data.append([bench, config, 'MULTI_RET_ZONE1_HITS', float(parts[4])])
+                            data.append([bench, config, 'MULTI_RET_ZONE2_HITS', float(parts[5])])
+                            data.append([bench, config, 'MULTI_RET_ZONE3_HITS', float(parts[6])])
+                            data.append([bench, config, 'MULTI_RET_PROMOTIONS', float(parts[7])])
+                            data.append([bench, config, 'MULTI_RET_ADJUSTED_IPC', float(parts[8])])
+                        continue
+                        
                     try:
                         value = float(parts[3])
                         data.append([bench, config, metric, value])
@@ -104,7 +115,7 @@ def generate_report(input_file, output_file):
          df_wide['BTB_Hit_MPKI'] = np.nan
 
     # --- Sort Logic ---
-    custom_btb_order = ['convBTB', 'pdede', 'BTBX', 'sttramBTB', 'fixed-retentions-btb']
+    custom_btb_order = ['convBTB', 'pdede', 'BTBX', 'sttramBTB', 'fixed-retentions-btb', 'multi-retention-btb']
 
     def get_btb_sort_key(btb_name):
         if btb_name in custom_btb_order:
@@ -151,6 +162,17 @@ def generate_report(input_file, output_file):
     mpki_pivot = create_pivot('MPKI', 'mean')
     btb_miss_pivot = create_pivot('BTB_Miss_Rate', 'mean')
     btb_hit_mpki_pivot = create_pivot('BTB_Hit_MPKI', 'mean')
+    
+    if 'MULTI_RET_PROMOTIONS' in df_wide.columns:
+        multi_ret_prom_pivot = create_pivot('MULTI_RET_PROMOTIONS', 'mean')
+        multi_ret_z1_pivot = create_pivot('MULTI_RET_ZONE1_HITS', 'mean')
+        multi_ret_z2_pivot = create_pivot('MULTI_RET_ZONE2_HITS', 'mean')
+        multi_ret_z3_pivot = create_pivot('MULTI_RET_ZONE3_HITS', 'mean')
+    else:
+        multi_ret_prom_pivot = None
+        multi_ret_z1_pivot = None
+        multi_ret_z2_pivot = None
+        multi_ret_z3_pivot = None
 
     # --- Summary Sheet ---
     unique_btbs = df_wide['BTB'].unique()
@@ -188,6 +210,11 @@ def generate_report(input_file, output_file):
                 'BTB Miss Rate': btb_miss_pivot,
                 'BTB Hit MPKI': btb_hit_mpki_pivot
             }
+            if multi_ret_prom_pivot is not None:
+                sheet_map['Multi-Ret Promotions'] = multi_ret_prom_pivot
+                sheet_map['Multi-Ret Zone1 Hits'] = multi_ret_z1_pivot
+                sheet_map['Multi-Ret Zone2 Hits'] = multi_ret_z2_pivot
+                sheet_map['Multi-Ret Zone3 Hits'] = multi_ret_z3_pivot
             
             for name, pvt in sheet_map.items():
                 pvt.to_excel(writer, sheet_name=name)
