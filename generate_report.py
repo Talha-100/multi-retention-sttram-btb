@@ -104,16 +104,30 @@ def generate_report(input_file, output_file):
     
     df_wide['BTB_Miss_Rate'] = 0.0
     total_accesses = df_wide['Total_BTB_Misses'] + df_wide['Total_BTB_Hits']
-    # Avoid division by zero
     mask = total_accesses > 0
     df_wide.loc[mask, 'BTB_Miss_Rate'] = (df_wide.loc[mask, 'Total_BTB_Misses'] / total_accesses.loc[mask]) * 100
 
-    # 3. BTB Hit MPKI (Mispredict on Hit)
+    # 3. Multi-Retention Hit Distribution
+    if 'MULTI_RET_ZONE1_HITS' in df_wide.columns:
+        total_ret_hits = df_wide['MULTI_RET_ZONE1_HITS'] + df_wide['MULTI_RET_ZONE2_HITS'] + df_wide['MULTI_RET_ZONE3_HITS']
+        mask = total_ret_hits > 0
+        df_wide.loc[mask, 'Zone1_Hit_Pct'] = (df_wide.loc[mask, 'MULTI_RET_ZONE1_HITS'] / total_ret_hits.loc[mask]) * 100
+        df_wide.loc[mask, 'Zone2_Hit_Pct'] = (df_wide.loc[mask, 'MULTI_RET_ZONE2_HITS'] / total_ret_hits.loc[mask]) * 100
+        df_wide.loc[mask, 'Zone3_Hit_Pct'] = (df_wide.loc[mask, 'MULTI_RET_ZONE3_HITS'] / total_ret_hits.loc[mask]) * 100
+
+    # 4. BTB Hit MPKI (Mispredict on Hit)
     if 'mispredict_on_btb_hit' in df_wide.columns and 'instructions' in df_wide.columns:
          df_wide['BTB_Hit_MPKI'] = (df_wide['mispredict_on_btb_hit'] / df_wide['instructions']) * 1000
     else:
          df_wide['BTB_Hit_MPKI'] = np.nan
 
+    # --- Speedup Calculation ---
+    baseline_btb = 'convBTB'
+    if baseline_btb in df_wide['BTB'].unique():
+        baselines = df_wide[df_wide['BTB'] == baseline_btb].set_index(['Benchmark', 'Prefetcher'])['IPC']
+        df_wide = df_wide.join(baselines, on=['Benchmark', 'Prefetcher'], rsuffix='_base')
+        df_wide['Speedup_vs_Conv'] = (df_wide['IPC'] / df_wide['IPC_base'] - 1) * 100
+    
     # --- Sort Logic ---
     custom_btb_order = ['convBTB', 'pdede', 'BTBX', 'sttramBTB', 'fixed-retentions-btb', 'multi-retention-btb']
 
@@ -163,11 +177,13 @@ def generate_report(input_file, output_file):
     btb_miss_pivot = create_pivot('BTB_Miss_Rate', 'mean')
     btb_hit_mpki_pivot = create_pivot('BTB_Hit_MPKI', 'mean')
     
+    speedup_pivot = create_pivot('Speedup_vs_Conv', 'mean') if 'Speedup_vs_Conv' in df_wide.columns else None
+
     if 'MULTI_RET_PROMOTIONS' in df_wide.columns:
         multi_ret_prom_pivot = create_pivot('MULTI_RET_PROMOTIONS', 'mean')
-        multi_ret_z1_pivot = create_pivot('MULTI_RET_ZONE1_HITS', 'mean')
-        multi_ret_z2_pivot = create_pivot('MULTI_RET_ZONE2_HITS', 'mean')
-        multi_ret_z3_pivot = create_pivot('MULTI_RET_ZONE3_HITS', 'mean')
+        multi_ret_z1_pivot = create_pivot('Zone1_Hit_Pct', 'mean')
+        multi_ret_z2_pivot = create_pivot('Zone2_Hit_Pct', 'mean')
+        multi_ret_z3_pivot = create_pivot('Zone3_Hit_Pct', 'mean')
     else:
         multi_ret_prom_pivot = None
         multi_ret_z1_pivot = None
@@ -179,6 +195,7 @@ def generate_report(input_file, output_file):
     summary_data = []
     for btb in unique_btbs:
         ipc_val = ipc_pivot.loc['Geomean', (btb, 'Average')] if (btb, 'Average') in ipc_pivot.columns else np.nan
+        speedup_val = speedup_pivot.loc['Arithmetic Mean', (btb, 'Average')] if speedup_pivot is not None and (btb, 'Average') in speedup_pivot.columns else np.nan
         mpki_val = mpki_pivot.loc['Arithmetic Mean', (btb, 'Average')] if (btb, 'Average') in mpki_pivot.columns else np.nan
         miss_val = btb_miss_pivot.loc['Arithmetic Mean', (btb, 'Average')] if (btb, 'Average') in btb_miss_pivot.columns else np.nan
         hit_mpki_val = btb_hit_mpki_pivot.loc['Arithmetic Mean', (btb, 'Average')] if (btb, 'Average') in btb_hit_mpki_pivot.columns else np.nan
@@ -186,6 +203,7 @@ def generate_report(input_file, output_file):
         summary_data.append({
             'BTB': btb, 
             'Avg IPC (Geomean)': ipc_val, 
+            'Avg Speedup (%)': speedup_val,
             'Avg MPKI': mpki_val,
             'Avg BTB Miss Rate (%)': miss_val,
             'Avg BTB Hit MPKI': hit_mpki_val
@@ -210,11 +228,14 @@ def generate_report(input_file, output_file):
                 'BTB Miss Rate': btb_miss_pivot,
                 'BTB Hit MPKI': btb_hit_mpki_pivot
             }
+            if speedup_pivot is not None:
+                sheet_map['Speedup Analysis'] = speedup_pivot
+                
             if multi_ret_prom_pivot is not None:
                 sheet_map['Multi-Ret Promotions'] = multi_ret_prom_pivot
-                sheet_map['Multi-Ret Zone1 Hits'] = multi_ret_z1_pivot
-                sheet_map['Multi-Ret Zone2 Hits'] = multi_ret_z2_pivot
-                sheet_map['Multi-Ret Zone3 Hits'] = multi_ret_z3_pivot
+                sheet_map['Zone1 Hit Distribution %'] = multi_ret_z1_pivot
+                sheet_map['Zone2 Hit Distribution %'] = multi_ret_z2_pivot
+                sheet_map['Zone3 Hit Distribution %'] = multi_ret_z3_pivot
             
             for name, pvt in sheet_map.items():
                 pvt.to_excel(writer, sheet_name=name)
@@ -224,9 +245,9 @@ def generate_report(input_file, output_file):
                 sheet = writer.sheets[name]
                 nrow, ncol = pvt.shape
                 
-                # Logic: IPC is Higher=Better (Green Max)
+                # Logic: IPC and Speedup and Zone3 are Higher=Better (Green Max)
                 # Others are Lower=Better (Red Max, Green Min)
-                if name == 'IPC Analysis':
+                if name in ['IPC Analysis', 'Speedup Analysis', 'Zone3 Hit Distribution %']:
                     colors = {'min_color': '#F8696B', 'mid_color': '#FFEB84', 'max_color': '#63BE7B'}
                 else:
                     colors = {'min_color': '#63BE7B', 'mid_color': '#FFEB84', 'max_color': '#F8696B'}
