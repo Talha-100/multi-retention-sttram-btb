@@ -7,6 +7,7 @@ from scipy.stats import gmean
 def load_and_parse_data(filepath):
     print(f"Reading {filepath}...")
     data = []
+    zone_writes = {}
     try:
         with open(filepath, 'r') as f:
             for line in f:
@@ -16,6 +17,39 @@ def load_and_parse_data(filepath):
                     config = parts[1]
                     metric = parts[2]
                     
+                    if metric == 'STT_WRITE_COUNT':
+                        if len(parts) >= 7:
+                            partition = int(parts[3])
+                            set_idx = int(parts[4])
+                            way = int(parts[5])
+                            count = int(parts[6])
+                            
+                            key = (bench, config)
+                            if key not in zone_writes:
+                                zone_writes[key] = {1: 0, 2: 0, 3: 0}
+                                
+                            if 'fixed-retentions-btb' in config:
+                                if partition in [0, 1, 3]:
+                                    zone = 1
+                                elif partition in [2, 4, 6, 8]:
+                                    zone = 2
+                                elif partition in [5, 7]:
+                                    zone = 3
+                                else:
+                                    continue
+                                zone_writes[key][zone] += count
+                            elif 'multi-retention-btb' in config:
+                                if set_idx <= 1023:
+                                    zone = 1
+                                elif set_idx <= 1535:
+                                    zone = 2
+                                elif set_idx <= 2047:
+                                    zone = 3
+                                else:
+                                    continue
+                                zone_writes[key][zone] += count
+                        continue
+
                     if metric == 'MULTI_RET_STATS':
                         # parts format: [bench, config, 'MULTI_RET_STATS', Benchmark, Z1_Hits, Z2_Hits, Z3_Hits, Prom, Adj_IPC]
                         if len(parts) >= 9:
@@ -34,6 +68,11 @@ def load_and_parse_data(filepath):
     except FileNotFoundError:
         print(f"Error: File {filepath} not found.")
         return pd.DataFrame()
+
+    for (bench, config), zw in zone_writes.items():
+        data.append([bench, config, 'Zone1_Writes', zw[1]])
+        data.append([bench, config, 'Zone2_Writes', zw[2]])
+        data.append([bench, config, 'Zone3_Writes', zw[3]])
 
     df = pd.DataFrame(data, columns=['Benchmark', 'Config', 'Metric', 'Value'])
     return df
@@ -121,6 +160,63 @@ def generate_report(input_file, output_file):
     else:
          df_wide['BTB_Hit_MPKI'] = np.nan
 
+    # 5. Energy and Power Calculations
+    e_read_sram = 0.15 * 1e-9
+    e_write_sram = 0.15 * 1e-9
+    p_leak_sram = 2.59 * 1e-3
+
+    e_read_sttram = 0.12 * 1e-9
+    e_write_sttram_nv = 0.75 * 1e-9
+    p_leak_sttram = 1.21 * 1e-3
+    
+    e_write_z1 = 0.45 * 1e-9
+    e_write_z2 = 0.52 * 1e-9
+    e_write_z3 = 0.61 * 1e-9
+
+    freq = 4e9
+
+    def calc_energy(row):
+        reads = row.get('BTB_reads:', 0)
+        writes = row.get('BTB_writes:', 0)
+        instrs = row.get('instructions', 0)
+        ipc = row.get('IPC', 0)
+        btb = row['BTB']
+        
+        if pd.isna(reads): reads = 0
+        if pd.isna(writes): writes = 0
+        if pd.isna(instrs) or pd.isna(ipc) or ipc == 0:
+            cycles = 0
+        else:
+            cycles = instrs / ipc
+            
+        if btb in ['convBTB', 'BTBX', 'pdede']:
+            dyn = (reads * e_read_sram) + (writes * e_write_sram)
+            stat = p_leak_sram * (cycles / freq)
+        elif btb == 'sttramBTB':
+            dyn = (reads * e_read_sttram) + (writes * e_write_sttram_nv)
+            stat = p_leak_sttram * (cycles / freq)
+        elif btb in ['fixed-retentions-btb', 'multi-retention-btb']:
+            z1_w = row.get('Zone1_Writes', 0)
+            z2_w = row.get('Zone2_Writes', 0)
+            z3_w = row.get('Zone3_Writes', 0)
+            if pd.isna(z1_w): z1_w = 0
+            if pd.isna(z2_w): z2_w = 0
+            if pd.isna(z3_w): z3_w = 0
+            
+            dyn = (reads * e_read_sttram) + (z1_w * e_write_z1) + (z2_w * e_write_z2) + (z3_w * e_write_z3)
+            stat = p_leak_sttram * (cycles / freq)
+        else:
+            dyn = 0
+            stat = 0
+            
+        total_energy_mj = (dyn + stat) * 1000
+        avg_power_mw = total_energy_mj / (cycles / freq * 1000) if cycles > 0 else 0
+        
+        return pd.Series({'Energy (mJ)': total_energy_mj, 'Avg Power (mW)': avg_power_mw})
+
+    energy_metrics = df_wide.apply(calc_energy, axis=1)
+    df_wide = pd.concat([df_wide, energy_metrics], axis=1)
+
     # --- Speedup Calculation ---
     baseline_btb = 'convBTB'
     if baseline_btb in df_wide['BTB'].unique():
@@ -176,6 +272,8 @@ def generate_report(input_file, output_file):
     mpki_pivot = create_pivot('MPKI', 'mean')
     btb_miss_pivot = create_pivot('BTB_Miss_Rate', 'mean')
     btb_hit_mpki_pivot = create_pivot('BTB_Hit_MPKI', 'mean')
+    energy_pivot = create_pivot('Energy (mJ)', 'mean')
+    power_pivot = create_pivot('Avg Power (mW)', 'mean')
     
     speedup_pivot = create_pivot('Speedup_vs_Conv', 'mean') if 'Speedup_vs_Conv' in df_wide.columns else None
 
@@ -199,6 +297,8 @@ def generate_report(input_file, output_file):
         mpki_val = mpki_pivot.loc['Arithmetic Mean', (btb, 'Average')] if (btb, 'Average') in mpki_pivot.columns else np.nan
         miss_val = btb_miss_pivot.loc['Arithmetic Mean', (btb, 'Average')] if (btb, 'Average') in btb_miss_pivot.columns else np.nan
         hit_mpki_val = btb_hit_mpki_pivot.loc['Arithmetic Mean', (btb, 'Average')] if (btb, 'Average') in btb_hit_mpki_pivot.columns else np.nan
+        energy_val = energy_pivot.loc['Arithmetic Mean', (btb, 'Average')] if (btb, 'Average') in energy_pivot.columns else np.nan
+        power_val = power_pivot.loc['Arithmetic Mean', (btb, 'Average')] if (btb, 'Average') in power_pivot.columns else np.nan
         
         summary_data.append({
             'BTB': btb, 
@@ -206,7 +306,9 @@ def generate_report(input_file, output_file):
             'Avg Speedup (%)': speedup_val,
             'Avg MPKI': mpki_val,
             'Avg BTB Miss Rate (%)': miss_val,
-            'Avg BTB Hit MPKI': hit_mpki_val
+            'Avg BTB Hit MPKI': hit_mpki_val,
+            'Avg Energy (mJ)': energy_val,
+            'Avg Power (mW)': power_val
         })
     
     summary_df = pd.DataFrame(summary_data)
@@ -226,7 +328,9 @@ def generate_report(input_file, output_file):
                 'IPC Analysis': ipc_pivot,
                 'MPKI Analysis': mpki_pivot,
                 'BTB Miss Rate': btb_miss_pivot,
-                'BTB Hit MPKI': btb_hit_mpki_pivot
+                'BTB Hit MPKI': btb_hit_mpki_pivot,
+                'Energy Analysis': energy_pivot,
+                'Power Analysis': power_pivot
             }
             if speedup_pivot is not None:
                 sheet_map['Speedup Analysis'] = speedup_pivot
