@@ -6,9 +6,9 @@
 
 # Compile
 
-Champsim needs to be compiled with three BTB designs (convBTB, pdede, and BTBX) and two instruction prefetchers (no, fdip).  
+Champsim needs to be compiled with three  SRAM BTB designs (convBTB, pdede, and BTBX) and three STT-RAM BTB designs (sttramBTB, fixed-retentions-btb, and multi-retention-btb), each with two instruction prefetchers (no, fdip).
 
-Important note on compilation: IFETCH_BUFFER needs to be 128 entries when compiling with “fdip” prefetcher and “FETCH_WIDTH*2” entries when compiling with “no” prefetcher. This is because of how instruction fetch is implemented in baseline Champsim. IFETCH_BUFFER size is defined in line 63 of /<Path_to_code>/inc/ooo_cpu.h 
+Important note on compilation: IFETCH_BUFFER needs to be 128 entries when compiling with “fdip” prefetcher and “FETCH_WIDTH*2” entries when compiling with “no” prefetcher. This is because of how instruction fetch is implemented in baseline Champsim. IFETCH_BUFFER size is defined in line 63 of /<Path_to_code>/inc/ooo_cpu.h
 
 Use the following commands to compile the code:
 
@@ -68,13 +68,11 @@ Go to directory /<Path_to_code>/collectStats/. Run the script getResults.sh, and
 
 # Plotting and Analyzing Results
 
-Instead of manually updating the artifact Excel sheet, use the provided Python script to generate a fresh, formatted report.
+Use the script generate_report.py to analyze the results and generate an Excel report. This script reads the raw results from the “all_res” file, processes the data, and outputs a comprehensive report in `Analysis_Report.xlsx` that includes performance metrics (IPC, BTB hit/miss rates) and energy estimates for each BTB configuration.
+Ensure you have the required libraries installed, see `requirements.txt` for details.
 
 Run the following command to generate `Analysis_Report.xlsx`:
 ```bash
 python3 generate_report.py
 ```
 
-For more details on the report generation, see [REPORT_GENERATION.md](REPORT_GENERATION.md).
-
-For detailed analysis of STT-RAM write counts, see [STTRAM_ANALYSIS.md](STTRAM_ANALYSIS.md).

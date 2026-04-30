@@ -1,0 +1,9 @@
+# Python dependencies for analysis/report generation
+# Install with: pip install -r requirements.txt
+
+pandas>=1.5
+numpy>=1.23
+scipy>=1.9
+xlsxwriter>=3.0
+matplotlib>=3.6
+
